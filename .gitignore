@@ -1,0 +1,50 @@
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Log files
+*.log
+logs/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+env/
+.env
+
+# IDE and Editor files
+.vscode/
+.cursor/
+.idea/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Credentials and secrets
+# Note: keeping client_secret.json and gsc_credentials.json for now
+# Uncomment these if you want to exclude them:
+# client_secret.json
+# gsc_credentials.json
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Build directories
+build/
+dist/
+*.egg-info/ 

@@ -6,45 +6,45 @@
 
 ### 主要工具
 
-- **`gsc_main.py`** - 🚀 **主程序** (推薦使用)
+- **`search_console_manager.py`** - 🚀 **主程序** (推薦使用)
 
   - 提供友好的互動式選單
   - 適合新手用戶
   - 整合所有功能
 
-- **`gsc_cli_manager.py`** - 🛠️ **CLI 管理器**
+- **`console_commands.py`** - 🛠️ **控制台命令工具**
   - 命令行工具，支援所有基本操作
   - 支援批次處理和腳本化
   - 有參數時直接執行，無參數時提供互動模式
 
 ### 分析工具
 
-- **`gsc_report_generator.py`** - 📈 **報告生成器**
+- **`analytics_report_builder.py`** - 📈 **分析報告構建器**
 
   - 生成月度分析報告
   - 關鍵字和頁面效能分析
   - 自動生成圖表和統計
 
-- **`gsc_hourly_analyzer.py`** - ⏰ **小時分析器**
+- **`hourly_performance_analyzer.py`** - ⏰ **小時效能分析器**
 
   - 每小時數據趨勢分析
   - 時段效能比較
   - 峰值時間識別
 
-- **`gsc_interactive_charts.py`** - 🎯 **互動圖表生成器**
+- **`interactive_data_visualizer.py`** - 🎯 **互動數據可視化工具**
   - 關鍵字氣泡圖
   - 多站點比較圖
   - 互動式 HTML 圖表
 
 ### 數據管理
 
-- **`gsc_batch_syncer.py`** - 📊 **批量同步工具**
+- **`bulk_data_synchronizer.py`** - 📊 **批量數據同步器**
 
   - 多站點批量數據同步
   - 自動錯誤重試
   - 進度監控
 
-- **`gsc_status_checker.py`** - 📋 **狀態檢查器**
+- **`system_health_check.py`** - 📋 **系統健康檢查器**
   - 系統狀態總覽
   - 數據覆蓋檢查
   - API 連接測試
@@ -54,7 +54,7 @@
 ### 1. 最簡單的方式 (推薦)
 
 ```bash
-python gsc_main.py
+python search_console_manager.py
 ```
 
 啟動互動式主選單，跟隨提示操作即可。
@@ -63,16 +63,16 @@ python gsc_main.py
 
 ```bash
 # 查看所有可用命令
-python gsc_cli_manager.py --help
+python console_commands.py --help
 
 # 開始認證
-python gsc_cli_manager.py auth
+python console_commands.py auth
 
 # 查看站點
-python gsc_cli_manager.py sites
+python console_commands.py sites
 
 # 同步數據
-python gsc_cli_manager.py sync --all-sites --start-date 2024-01-01 --end-date 2024-01-31
+python console_commands.py sync --all-sites --start-date 2024-01-01 --end-date 2024-01-31
 ```
 
 ### 3. 無參數互動模式
@@ -80,10 +80,10 @@ python gsc_cli_manager.py sync --all-sites --start-date 2024-01-01 --end-date 20
 如果你忘記了參數，直接運行命令，工具會引導你輸入：
 
 ```bash
-python gsc_cli_manager.py add-site
+python console_commands.py add-site
 # 會提示你輸入站點 URL
 
-python gsc_cli_manager.py plot
+python console_commands.py plot
 # 會讓你選擇站點和圖表類型
 ```
 
@@ -135,20 +135,20 @@ python gsc_cli_manager.py plot
 
 ```bash
 # 每日檢查
-python gsc_status_checker.py
+python system_health_check.py
 
 # 查看最近趨勢
-python gsc_cli_manager.py plot --site-id 1 --type clicks --days 7
+python console_commands.py plot --site-id 1 --type clicks --days 7
 ```
 
 ### 月度報告
 
 ```bash
 # 生成完整報告
-python gsc_report_generator.py
+python analytics_report_builder.py
 
 # 互動式報告生成
-python gsc_main.py
+python search_console_manager.py
 # 選擇 "4. 📈 數據分析與報告" -> "1. 生成月度報告"
 ```
 
@@ -156,10 +156,10 @@ python gsc_main.py
 
 ```bash
 # 快速同步最近一週
-python gsc_cli_manager.py sync --all-sites --start-date 2024-12-01 --end-date 2024-12-07
+python console_commands.py sync --all-sites --start-date 2024-12-01 --end-date 2024-12-07
 
 # 或使用互動模式
-python gsc_main.py
+python search_console_manager.py
 # 選擇 "3. 📊 數據同步" -> "1. 快速同步"
 ```
 
@@ -167,10 +167,10 @@ python gsc_main.py
 
 ```bash
 # 每小時趨勢分析
-python gsc_hourly_analyzer.py
+python hourly_performance_analyzer.py
 
 # 生成互動圖表
-python gsc_interactive_charts.py
+python interactive_data_visualizer.py
 ```
 
 ## 🔧 設置需求
@@ -187,7 +187,7 @@ pip install -r requirements.txt
 2. 將憑證文件命名為 `client_secret.json`
 3. 運行認證流程：
    ```bash
-   python gsc_cli_manager.py auth
+   python console_commands.py auth
    ```
 
 ## 📁 輸出文件
@@ -199,19 +199,28 @@ pip install -r requirements.txt
 
 ## 💡 貼心提示
 
-1. **新手推薦**: 使用 `python gsc_main.py` 開始，有完整的引導界面
-2. **自動化**: 使用 `gsc_cli_manager.py` 配合 cron 進行定期數據同步
+1. **新手推薦**: 使用 `python search_console_manager.py` 開始，有完整的引導界面
+2. **自動化**: 使用 `console_commands.py` 配合 cron 進行定期數據同步
 3. **忘記參數**: 所有主要命令都支援無參數互動模式
 4. **錯誤處理**: 工具會自動重試和錯誤恢復
 5. **數據安全**: 資料庫文件已被 .gitignore 排除，不會被意外提交
 
 ## 🎯 最佳實踐
 
-1. **每日運行狀態檢查**: `python gsc_status_checker.py`
+1. **每日運行狀態檢查**: `python system_health_check.py`
 2. **週度數據同步**: 使用快速同步功能
 3. **月度深度分析**: 生成完整報告和互動圖表
 4. **問題排查**: 查看系統日誌了解詳細信息
 
+## 📚 文件命名說明
+
+我們採用了清晰的文件命名約定，就像 Duolingo 或 Uber 的開發團隊一樣：
+
+- **功能導向**: 文件名直接反映其主要功能
+- **層次清晰**: 主程序 > 功能模塊 > 工具腳本
+- **易於理解**: 無需查看代碼就能知道文件用途
+- **專業規範**: 符合企業級開發標準
+
 ---
 
-如有問題，請查看 `docs/` 目錄中的詳細文檔或運行 `python gsc_main.py` 使用互動式幫助。
+如有問題，請查看 `docs/` 目錄中的詳細文檔或運行 `python search_console_manager.py` 使用互動式幫助。

@@ -91,13 +91,13 @@ class GSCMain:
             
             choice = input("請選擇: ").strip()
             if choice == '1':
-                self.run_script('gsc_cli_manager.py', ['auth'])
+                self.run_script('console_commands.py', ['auth'])
             elif choice == '2':
                 self.test_gsc_connection()
         else:
             print("❌ 尚未認證")
             print("正在啟動認證流程...")
-            self.run_script('gsc_cli_manager.py', ['auth'])
+            self.run_script('console_commands.py', ['auth'])
     
     def site_menu(self):
         """站點管理選單"""
@@ -112,17 +112,17 @@ class GSCMain:
         choice = input("請選擇: ").strip()
         
         if choice == '1':
-            self.run_script('gsc_cli_manager.py', ['sites'])
+            self.run_script('console_commands.py', ['sites'])
         elif choice == '2':
             site_url = input("請輸入站點 URL (例如: https://example.com/): ").strip()
             if site_url:
-                self.run_script('gsc_cli_manager.py', ['add-site', site_url])
+                self.run_script('console_commands.py', ['add-site', site_url])
         elif choice == '3':
             sites = self.get_sites_with_selection()
             if sites:
                 site_id = self.select_site(sites)
                 if site_id:
-                    self.run_script('gsc_cli_manager.py', ['coverage', '--site-id', str(site_id)])
+                    self.run_script('console_commands.py', ['coverage', '--site-id', str(site_id)])
     
     def sync_menu(self):
         """數據同步選單"""
@@ -145,9 +145,9 @@ class GSCMain:
         elif choice == '3':
             self.single_site_sync()
         elif choice == '4':
-            self.run_script('gsc_batch_syncer.py')
+            self.run_script('bulk_data_synchronizer.py')
         elif choice == '5':
-            self.run_script('gsc_cli_manager.py', ['progress'])
+            self.run_script('console_commands.py', ['progress'])
     
     def analysis_menu(self):
         """數據分析與報告選單"""
@@ -191,7 +191,7 @@ class GSCMain:
         elif choice == '3':
             self.hourly_coverage()
         elif choice == '4':
-            self.run_script('gsc_hourly_analyzer.py')
+            self.run_script('hourly_performance_analyzer.py')
     
     def chart_menu(self):
         """互動式圖表選單"""
@@ -207,14 +207,14 @@ class GSCMain:
         choice = input("請選擇: ").strip()
         
         if choice in ['1', '2', '3', '4']:
-            self.run_script('gsc_interactive_charts.py')
+            self.run_script('interactive_data_visualizer.py')
     
     def status_menu(self):
         """系統狀態檢查選單"""
         print("\n📋 系統狀態檢查")
         print("-"*30)
         
-        self.run_script('gsc_status_checker.py')
+        self.run_script('system_health_check.py')
     
     def advanced_menu(self):
         """高級工具選單"""
@@ -230,11 +230,11 @@ class GSCMain:
         choice = input("請選擇: ").strip()
         
         if choice == '1':
-            self.run_script('gsc_cli_manager.py', ['api-status'])
+            self.run_script('console_commands.py', ['api-status'])
         elif choice == '2':
             lines = input("顯示行數 (默認50): ").strip()
             lines = lines if lines.isdigit() else '50'
-            self.run_script('gsc_cli_manager.py', ['logs', '--lines', lines])
+            self.run_script('console_commands.py', ['logs', '--lines', lines])
         elif choice == '3':
             print("數據庫維護功能開發中...")
         elif choice == '4':
@@ -249,7 +249,7 @@ class GSCMain:
         confirm = input("確定要開始同步嗎？ (y/N): ").strip().lower()
         
         if confirm == 'y':
-            self.run_script('gsc_cli_manager.py', [
+            self.run_script('console_commands.py', [
                 'sync', '--all-sites', 
                 '--start-date', start_date, 
                 '--end-date', end_date
@@ -267,7 +267,7 @@ class GSCMain:
             if force == 'y':
                 args.append('--force')
             
-            self.run_script('gsc_cli_manager.py', args)
+            self.run_script('console_commands.py', args)
     
     def single_site_sync(self):
         """單一站點同步"""
@@ -286,7 +286,7 @@ class GSCMain:
             if end_date:
                 args.extend(['--end-date', end_date])
             
-            self.run_script('gsc_cli_manager.py', args)
+            self.run_script('console_commands.py', args)
     
     def hourly_sync(self):
         """每小時數據同步"""
@@ -303,7 +303,7 @@ class GSCMain:
             if start_date:
                 args.extend(['--start-date', start_date])
             
-            self.run_script('gsc_cli_manager.py', args)
+            self.run_script('console_commands.py', args)
     
     def hourly_summary(self):
         """每小時總結"""
@@ -319,7 +319,7 @@ class GSCMain:
             if date:
                 args.extend(['--date', date])
             
-            self.run_script('gsc_cli_manager.py', args)
+            self.run_script('console_commands.py', args)
     
     def hourly_coverage(self):
         """每小時數據覆蓋"""
@@ -329,7 +329,7 @@ class GSCMain:
         
         site_id = self.select_site(sites)
         if site_id:
-            self.run_script('gsc_cli_manager.py', ['hourly-coverage', '--site-id', str(site_id)])
+            self.run_script('console_commands.py', ['hourly-coverage', '--site-id', str(site_id)])
     
     def generate_monthly_report(self):
         """生成月度報告"""
@@ -340,7 +340,7 @@ class GSCMain:
         choice = input("請選擇: ").strip()
         
         if choice == '1':
-            self.run_script('gsc_report_generator.py')
+            self.run_script('analytics_report_builder.py')
         elif choice == '2':
             sites = self.get_sites_with_selection()
             if sites:
@@ -350,7 +350,7 @@ class GSCMain:
                     # 傳遞站點信息給報告生成器
                     os.environ['GSC_SITE_ID'] = str(site_id)
                     os.environ['GSC_SITE_NAME'] = site['name']
-                    self.run_script('gsc_report_generator.py')
+                    self.run_script('analytics_report_builder.py')
     
     def keyword_analysis(self):
         """關鍵字分析"""
@@ -361,7 +361,7 @@ class GSCMain:
         site_id = self.select_site(sites)
         if site_id:
             args = ['plot', '--site-id', str(site_id), '--type', 'clicks']
-            self.run_script('gsc_cli_manager.py', args)
+            self.run_script('console_commands.py', args)
     
     def page_analysis(self):
         """頁面分析"""
@@ -372,7 +372,7 @@ class GSCMain:
         site_id = self.select_site(sites)
         if site_id:
             args = ['plot', '--site-id', str(site_id), '--type', 'rankings']
-            self.run_script('gsc_cli_manager.py', args)
+            self.run_script('console_commands.py', args)
     
     def custom_chart(self):
         """自定義圖表"""
@@ -400,7 +400,7 @@ class GSCMain:
                     '--days', days
                 ]
                 
-                self.run_script('gsc_cli_manager.py', args)
+                self.run_script('console_commands.py', args)
     
     def get_sites_with_selection(self):
         """獲取站點列表並提供選擇"""

@@ -89,7 +89,7 @@ def main():
     
     if not args.command:
         parser.print_help()
-        print("\n💡 提示: 使用 'python gsc_main.py' 來啟動互動式選單")
+        print("\n💡 提示: 使用 'python search_console_manager.py' 來啟動互動式選單")
         return
     
     try:

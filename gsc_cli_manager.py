@@ -39,7 +39,7 @@ def main():
     sites_parser = subparsers.add_parser('sites', help='列出所有站點')
     
     add_site_parser = subparsers.add_parser('add-site', help='添加站點到數據庫')
-    add_site_parser.add_argument('site_url', help='站點 URL')
+    add_site_parser.add_argument('site_url', nargs='?', help='站點 URL')
     
     # 數據覆蓋
     coverage_parser = subparsers.add_parser('coverage', help='顯示數據覆蓋情況')
@@ -80,7 +80,7 @@ def main():
     
     # 數據可視化
     plot_parser = subparsers.add_parser('plot', help='繪製數據圖表')
-    plot_parser.add_argument('--site-id', type=int, required=True, help='站點 ID')
+    plot_parser.add_argument('--site-id', type=int, help='站點 ID')
     plot_parser.add_argument('--type', choices=['clicks', 'rankings', 'coverage'], default='clicks', help='圖表類型')
     plot_parser.add_argument('--days', type=int, default=30, help='天數範圍 (默認30天)')
     plot_parser.add_argument('--save', help='保存圖片路徑 (可選)')
@@ -89,6 +89,7 @@ def main():
     
     if not args.command:
         parser.print_help()
+        print("\n💡 提示: 使用 'python gsc_main.py' 來啟動互動式選單")
         return
     
     try:
@@ -157,9 +158,19 @@ def show_sites():
     except Exception as e:
         print(f"❌ 獲取站點失敗：{e}")
 
-def add_site(site_url: str):
+def add_site(site_url: Optional[str] = None):
     """添加站點"""
     try:
+        # 如果沒有提供 URL，互動式詢問
+        if not site_url:
+            print("\n🌐 添加新站點")
+            print("請輸入站點 URL (例如: https://example.com/ 或 sc-domain:example.com)")
+            site_url = input("站點 URL: ").strip()
+            
+            if not site_url:
+                print("❌ 必須提供站點 URL")
+                return
+        
         database = Database()
         site_name = site_url.replace('sc-domain:', '').replace('https://', '').replace('http://', '')
         site_id = database.add_site(site_url, site_name)
@@ -478,6 +489,29 @@ def plot_data(args):
         plt.rcParams['axes.unicode_minus'] = False
         
         database = Database()
+        site_id = args.site_id
+        
+        # 如果沒有提供站點 ID，互動式選擇
+        if not site_id:
+            sites = database.get_sites()
+            if not sites:
+                print("❌ 數據庫中沒有站點，請先添加站點")
+                return
+            
+            print("\n📊 選擇要分析的站點:")
+            for i, site in enumerate(sites, 1):
+                print(f"  {i}. {site['name']} (ID: {site['id']})")
+            
+            try:
+                choice = int(input(f"請選擇站點 (1-{len(sites)}): ").strip())
+                if 1 <= choice <= len(sites):
+                    site_id = sites[choice-1]['id']
+                else:
+                    print("❌ 無效選擇")
+                    return
+            except ValueError:
+                print("❌ 請輸入數字")
+                return
         
         # 計算日期範圍
         end_date = datetime.now()
@@ -487,11 +521,11 @@ def plot_data(args):
         
         with database.get_connection() as conn:
             if args.type == 'clicks':
-                plot_clicks_trend(conn, args.site_id, start_str, end_str, args.save)
+                plot_clicks_trend(conn, site_id, start_str, end_str, args.save)
             elif args.type == 'rankings':
-                plot_rankings_trend(conn, args.site_id, start_str, end_str, args.save)
+                plot_rankings_trend(conn, site_id, start_str, end_str, args.save)
             elif args.type == 'coverage':
-                plot_data_coverage(conn, args.site_id, args.save)
+                plot_data_coverage(conn, site_id, args.save)
     
     except ImportError:
         print("❌ 需要安裝 matplotlib：pip install matplotlib")

@@ -1,0 +1,41 @@
+2025-06-25 18:20:53,727 - services.database - INFO - Database initialized successfully
+2025-06-25 18:20:53,727 - services.database - INFO - Database initialized successfully
+2025-06-25 18:20:53,734 - services.database - INFO - Database initialized successfully
+2025-06-25 18:20:53,766 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.0.7:8000
+2025-06-25 18:20:53,766 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-06-25 18:20:57,037 - services.database - INFO - Database initialized successfully
+2025-06-25 18:20:57,254 - googleapiclient.discovery_cache - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-06-25 18:20:57,287 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:20:57] "GET / HTTP/1.1" 200 -
+2025-06-25 18:20:57,741 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:20:57] "[33mGET /robots.txt?486346 HTTP/1.1[0m" 404 -
+2025-06-25 18:20:58,309 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:20:58] "GET /data-builder/status HTTP/1.1" 200 -
+2025-06-25 18:20:58,796 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:20:58] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-06-25 18:21:08,274 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:08] "GET /data-builder/status HTTP/1.1" 200 -
+2025-06-25 18:21:09,921 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:09] "POST /data-builder/build/recent HTTP/1.1" 200 -
+2025-06-25 18:21:09,938 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:09] "GET /api/logs?lines=20 HTTP/1.1" 200 -
+2025-06-25 18:21:11,159 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:11] "GET /data-builder/status HTTP/1.1" 200 -
+2025-06-25 18:21:11,917 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:11] "GET /api/logs?since=2025-06-25T18:21:09.921000 HTTP/1.1" 200 -
+2025-06-25 18:21:13,943 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:13] "GET /api/logs?since=2025-06-25T18:21:11.159000 HTTP/1.1" 200 -
+2025-06-25 18:21:14,830 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:14] "[32mGET /auth/logout HTTP/1.1[0m" 302 -
+2025-06-25 18:21:14,880 - services.database - INFO - Database initialized successfully
+2025-06-25 18:21:14,998 - googleapiclient.discovery_cache - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-06-25 18:21:15,002 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:15] "GET /?success=logout HTTP/1.1" 200 -
+2025-06-25 18:21:15,141 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:15] "[33mGET /robots.txt?486346 HTTP/1.1[0m" 404 -
+2025-06-25 18:21:15,182 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:15] "[33mGET /robots.txt?486346 HTTP/1.1[0m" 404 -
+2025-06-25 18:21:15,221 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:15] "GET /data-builder/status HTTP/1.1" 200 -
+2025-06-25 18:21:17,904 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:17] "GET /sites/ HTTP/1.1" 200 -
+2025-06-25 18:21:18,068 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:18] "[33mGET /robots.txt?486346 HTTP/1.1[0m" 404 -
+2025-06-25 18:21:19,542 - services.database - INFO - Database initialized successfully
+2025-06-25 18:21:19,700 - googleapiclient.discovery_cache - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-06-25 18:21:19,703 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:19] "GET /?success=logout HTTP/1.1" 200 -
+2025-06-25 18:21:19,760 - werkzeug - INFO - 127.0.0.1 - - [25/Jun/2025 18:21:19] "[33mGET /robots.txt?486346 HTTP/1.1[0m" 404 -
+2025-06-25 18:21:28,796 - services.database - INFO - Database initialized successfully
+2025-06-25 18:21:28,796 - services.database - INFO - Database initialized successfully
+2025-06-25 18:21:28,802 - services.database - INFO - Database initialized successfully
+2025-06-25 18:21:28,817 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.0.7:8000
+2025-06-25 18:21:28,818 - werkzeug - INFO - [33mPress CTRL+C to quit[0m

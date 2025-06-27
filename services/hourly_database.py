@@ -4,17 +4,17 @@
 """
 
 import logging
-import sqlite3
 from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
+
 class HourlyDatabase:
     """處理每小時數據的數據庫操作"""
-    
+
     def __init__(self, db_connection_func):
         self.get_connection = db_connection_func
-    
+
     def init_hourly_tables(self):
         """初始化每小時數據表"""
         with self.get_connection() as conn:
@@ -41,23 +41,28 @@ class HourlyDatabase:
                     UNIQUE(site_id, hour_timestamp, query, page)
                 )
             ''')
-            
+
             # 每小時數據專用索引
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_hourly_rankings_date ON hourly_rankings(date)')
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_hourly_rankings_site ON hourly_rankings(site_id)')
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_hourly_rankings_hour ON hourly_rankings(hour)')
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_hourly_rankings_timestamp ON hourly_rankings(hour_timestamp)')
-            
+            conn.execute(
+                'CREATE INDEX IF NOT EXISTS idx_hourly_rankings_date ON hourly_rankings(date)')
+            conn.execute(
+                'CREATE INDEX IF NOT EXISTS idx_hourly_rankings_site ON hourly_rankings(site_id)')
+            conn.execute(
+                'CREATE INDEX IF NOT EXISTS idx_hourly_rankings_hour ON hourly_rankings(hour)')
+            conn.execute(
+                'CREATE INDEX IF NOT EXISTS idx_hourly_rankings_timestamp ON hourly_rankings(hour_timestamp)')
+
             conn.commit()
-    
-    def save_hourly_ranking_data(self, hourly_rankings: List[Dict[str, Any]]) -> int:
+
+    def save_hourly_ranking_data(
+            self, hourly_rankings: List[Dict[str, Any]]) -> int:
         """保存每小時排名數據"""
         saved_count = 0
         with self.get_connection() as conn:
             for ranking in hourly_rankings:
                 try:
                     conn.execute('''
-                        INSERT OR REPLACE INTO hourly_rankings 
+                        INSERT OR REPLACE INTO hourly_rankings
                         (site_id, keyword_id, date, hour, hour_timestamp, query, position, clicks, impressions, ctr, page, country, device)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
@@ -78,42 +83,47 @@ class HourlyDatabase:
                     saved_count += 1
                 except Exception as e:
                     logger.error(f"Failed to save hourly ranking: {e}")
-            
+
             conn.commit()
         return saved_count
-    
-    def get_hourly_rankings(self, site_id: Optional[int] = None, keyword_id: Optional[int] = None,
-                           start_date: Optional[str] = None, end_date: Optional[str] = None,
-                           hour: Optional[int] = None) -> List[Dict[str, Any]]:
+
+    def get_hourly_rankings(self,
+                            site_id: Optional[int] = None,
+                            keyword_id: Optional[int] = None,
+                            start_date: Optional[str] = None,
+                            end_date: Optional[str] = None,
+                            hour: Optional[int] = None) -> List[Dict[str,
+                                                                     Any]]:
         """獲取每小時排名數據"""
         with self.get_connection() as conn:
             conditions = []
             params = []
-            
+
             if site_id:
                 conditions.append('hr.site_id = ?')
                 params.append(site_id)
-            
+
             if keyword_id:
                 conditions.append('hr.keyword_id = ?')
                 params.append(keyword_id)
-            
+
             if start_date:
                 conditions.append('hr.date >= ?')
                 params.append(start_date)
-            
+
             if end_date:
                 conditions.append('hr.date <= ?')
                 params.append(end_date)
-            
+
             if hour is not None:
                 conditions.append('hr.hour = ?')
                 params.append(hour)
-            
-            where_clause = ' WHERE ' + ' AND '.join(conditions) if conditions else ''
-            
+
+            where_clause = ' WHERE ' + \
+                ' AND '.join(conditions) if conditions else ''
+
             query = f'''
-                SELECT 
+                SELECT
                     hr.*,
                     s.name as site_name,
                     k.keyword
@@ -123,25 +133,27 @@ class HourlyDatabase:
                 {where_clause}
                 ORDER BY hr.date DESC, hr.hour DESC
             '''
-            
-            return [dict(row) for row in conn.execute(query, params).fetchall()]
-    
-    def get_hourly_summary(self, site_id: int, date: Optional[str] = None) -> List[Dict[str, Any]]:
+
+            return [dict(row)
+                    for row in conn.execute(query, params).fetchall()]
+
+    def get_hourly_summary(self, site_id: int,
+                           date: Optional[str] = None) -> List[Dict[str, Any]]:
         """獲取每小時數據總結"""
         with self.get_connection() as conn:
             conditions = ['hr.site_id = ?']
             params = [site_id]
-            
+
             if date:
                 conditions.append('hr.date = ?')
                 params.append(date)
             else:
                 conditions.append('hr.date >= date("now", "-3 days")')
-            
+
             where_clause = ' WHERE ' + ' AND '.join(conditions)
-            
+
             query = f'''
-                SELECT 
+                SELECT
                     hr.date,
                     hr.hour,
                     COUNT(*) as query_count,
@@ -154,35 +166,37 @@ class HourlyDatabase:
                 GROUP BY hr.date, hr.hour
                 ORDER BY hr.date DESC, hr.hour DESC
             '''
-            
-            return [dict(row) for row in conn.execute(query, params).fetchall()]
-    
+
+            return [dict(row)
+                    for row in conn.execute(query, params).fetchall()]
+
     def get_hourly_coverage(self, site_id: int) -> Dict[str, Any]:
         """獲取每小時數據覆蓋情況"""
         with self.get_connection() as conn:
             # 檢查是否有每小時數據
             row = conn.execute('''
-                SELECT 
+                SELECT
                     COUNT(*) as total_records,
                     MIN(date) as first_date,
                     MAX(date) as last_date,
                     COUNT(DISTINCT date) as unique_dates,
                     COUNT(DISTINCT hour) as unique_hours
-                FROM hourly_rankings 
+                FROM hourly_rankings
                 WHERE site_id = ?
             ''', (site_id,)).fetchone()
-            
+
             result = dict(row) if row else {}
-            
-            # 獲取最近的數據點
+
+            # 獲取最近的數據點（按日期和小時分組）
             recent_data = conn.execute('''
                 SELECT date, hour, COUNT(*) as records
-                FROM hourly_rankings 
+                FROM hourly_rankings
                 WHERE site_id = ?
+                GROUP BY date, hour
                 ORDER BY date DESC, hour DESC
                 LIMIT 24
             ''', (site_id,)).fetchall()
-            
+
             result['recent_data'] = [dict(r) for r in recent_data]
-            
-            return result 
+
+            return result

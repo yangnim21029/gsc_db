@@ -1,12 +1,28 @@
+# Google API 相關
 google-auth==2.23.3
 google-auth-oauthlib==1.1.0
 google-auth-httplib2==0.1.1
 google-api-python-client==2.103.0
+
+# 數據處理和分析
 pandas==2.1.1
 numpy==1.25.2
-python-dotenv==1.0.0
-requests==2.31.0
-jieba==0.42.1
 scikit-learn==1.3.0
+
+# 數據可視化
 matplotlib==3.7.2
-seaborn==0.12.2 
+seaborn==0.12.2
+
+# 網絡請求和工具
+requests==2.31.0
+python-dotenv==1.0.0
+
+# 中文文本處理
+jieba==0.42.1
+
+# CLI 和進度條
+typer[all]==0.9.0
+tqdm==4.66.1
+
+# 開發工具（可選）
+rich==13.6.0 

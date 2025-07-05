@@ -100,3 +100,19 @@
     - [ ] 在工作流中配置步驟，以在每次 `push` 或 `pull request` 時自動運行 `pytest`。
 
 ---
+
+### Phase 5: 依賴健康度檢查與升級 (新)
+
+- [ ] **依賴審查**：定期審查 `requirements.txt`，移除不再需要的套件。
+- [ ] **策略性升級**：評估核心依賴（如 `pandas`, `google-api-client`）的新版本，進行分批、測試後的升級，以獲取新功能和安全補丁。
+- [ ] **引入 `pip-tools`**：考慮使用 `pip-tools` 管理依賴，通過 `requirements.in` 來維護頂層依賴，自動生成鎖定的 `requirements.txt`。
+
+---
+
+## 歷史紀錄與反思
+
+- **2024-Q2**:
+  - 完成了 CLI 的基本框架搭建 (`typer`)。
+  - 實現了核心的數據同步與儲存邏輯 (`gsc_client`, `database`)。
+  - 引入了 `dependency-injector` 解決了 `typer` 複雜的 DI 問題，實現了服務解耦。
+  - 根據 @AI 的建議，完成了配置系統的重構，引入了 `toml` 和 `pydantic`，使配置更健壯、更靈活。

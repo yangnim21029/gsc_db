@@ -1,181 +1,125 @@
-# GSC CLI - Google Search Console 數據管理工具
+# GSC-CLI
 
-GSC CLI 是一個功能強大的命令行工具，旨在簡化 Google Search Console (GSC) 數據的獲取、存儲、分析和報告流程。
+<p align="center">
+  您的個人 Google Search Console 數據倉庫與 AI 分析平台
+</p>
+<p align="center">
+    <a href="https://github.com/your-username/gsc-cli/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/your-username/gsc-cli?style=flat-square"></a>
+    <a href="https://github.com/your-username/gsc-cli/actions/workflows/ci.yml"><img alt="CI Status" src="https://img.shields.io/github/actions/workflow/status/your-username/gsc-cli/ci.yml?branch=main&style=flat-square"></a>
+    <a href="https://python.org"><img alt="Python Version" src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square"></a>
+</p>
 
-## 🚀 功能特色
+> **我們的使命：** 賦予開發者、行銷人員與網站主完全掌控其 Google Search Console 數據的能力。我們相信，長期的數據所有權是解鎖深度洞察、並為網站優化建構下一代 AI 驅動工具的關鍵。
 
-- ✅ **流式處理架構** - 以極低的記憶體佔用處理海量數據，解決單次請求大量數據導致的崩潰問題。
-- ✅ **自動化數據同步** - 批量獲取和處理 GSC 數據，支持多站點、多日期範圍。
-- ✅ **斷點續傳** - 在同步中斷後，可從上次成功的位置無縫繼續。
-- ✅ **靈活的同步模式** - 支持 `upsert`, `skip`, `replace` 等多種數據寫入策略。
-- ✅ **時段對比分析** - 比較兩個不同時間段的關鍵字或頁面表現。
-- ✅ **美觀的輸出界面** - Rich 庫提供的彩色表格和進度條。
-- ✅ **每小時數據分析** - 精細化時間維度數據分析。
+本專案提供了一個強大的命令列介面 (CLI) 和 API，用以自動化擷取、儲存和備份您的 GSC 數據，為您打造一個由您自己控制的、永久的個人數據倉庫。
 
-## 🛠️ 技術特色
+## ✨ 核心功能
 
-- **現代化 CLI 框架**: 使用 [Typer](https://typer.tiangolo.com/) 構建，提供類型提示和自動文檔生成。
-- **高性能數據庫**: 使用 SQLite 進行本地數據存儲，並通過優化查詢和索引保證性能。
-- **異步與並發**: 利用 `concurrent.futures` 進行並發處理，提高數據同步效率。
-- **專業級日誌**: 集成 `rich.logging`，提供結構化、易於閱讀的日誌輸出。
-- **模塊化設計**: 清晰的服務分層 (`services`, `jobs`, `analysis`)，易於擴展和維護。
+- **長期數據所有權**: 打破 GSC 16 個月的數據保留限制，建立您自己的歷史數據檔案庫。
+- **自動化數據同步**: 定期擷取 GSC 數據（搜尋分析、網站地圖等）並儲存於本地 SQLite 資料庫。
+- **穩健的備份機制**: 自動建立資料庫的壓縮備份，並清理舊的備份。
+- **強大的命令列介面**: 易於使用的指令，涵蓋身份驗證、數據同步與日常維護。
+- **API 就緒**: 內建 FastAPI 伺服器，為您的 AI Agent 或 Web UI 提供數據接口。
+- **整合任務執行器**: 附帶預先配置好的 `justfile`，簡化開發與操作流程。
 
-## 📦 安裝
+## 🚀 快速開始
 
-```bash
-# 1. 克隆倉庫
-git clone https://github.com/your-username/gsc-cli.git
-cd gsc-cli
+### 前提條件
 
-# 2. 創建虛擬環境 (推薦)
-python -m venv venv
-source venv/bin/activate  # on Windows, use `venv\Scripts\activate`
+本專案使用 `just` 作為指令執行器，以簡化常見任務。請先確保您已安裝 `just`。
 
-# 3. 安裝依賴
-pip install -r requirements.txt
-```
+- **macOS (使用 Homebrew):**
+  ```bash
+  brew install just
+  ```
+- **其他系統:**
+  請參考 [Just 官方安裝說明](https://just.systems/man/en/chapter_4.html)。
+
+### 安裝步驟
+
+1.  **複製倉庫**
+
+    ```bash
+    git clone https://github.com/your-username/gsc-cli.git
+    cd gsc-cli
+    ```
+
+2.  **一鍵安裝與設定 (推薦)**
+    此指令將使用 Poetry 安裝所有依賴，並引導您完成首次 Google API 身份驗證。
+    ```bash
+    just bootstrap
+    ```
 
 ## 🎯 基本用法
 
-### 1. 認證
+所有常用操作都已封裝為 `just` 任務。執行 `just --list` 可以查看所有可用的指令。
 
-首次使用時，需要進行 Google API 認證。
+### 1. 站點管理
 
 ```bash
-python main.py site auth
+# 列出所有已配置的站點
+just site-list
+
+# 新增一個站點
+just site-add "sc-domain:your-site.com"
 ```
 
 ### 2. 同步數據
 
-同步指定站點最近 7 天的數據。
+```bash
+# 同步站點 ID 為 1 的最近 14 天數據
+just sync-site 1 14
+
+# 執行完整的每日維護 (同步所有站點、備份資料庫、清理舊備份)
+just maintenance
+```
+
+### 3. 數據分析
 
 ```bash
-python main.py sync daily --site-url "sc-domain:your-site.com" --days 7
+# 檢查站點 ID 為 1 的數據覆蓋情況
+poetry run gsc-cli analyze coverage 1
+
+# 比較站點 ID 為 1 在兩個時間段的表現
+poetry run gsc-cli analyze compare 1 2023-01-01 2023-01-07 2023-01-08 2023-01-14
 ```
 
-## 深度指南
+## 🤖 API 服務 (為 AI Agent 準備)
 
-### 報告生成
+本專案包含一個 FastAPI 伺服器，可作為未來 AI Agent 或 Web 儀表板的數據後端。
 
-您可以通過 `report` 命令生成一份詳細的 GSC 表現報告，支持 Markdown 格式輸出和圖表生成。
+1.  **啟動開發伺服器 (具備自動重載功能):**
 
-```bash
-# 為指定站點 ID 生成報告
-python main.py analyze report --site-id 1 --output-path "reports/my_site_report.md" --days 30
-```
-
-### 時段對比分析
-
-您可以直接使用 `AnalysisService` 來比較兩個不同時間段的數據表現，找出增長或衰退的項目。
-
-```python
-#!/usr/bin/env python
-# 示例：比較本週與上週的關鍵字點擊變化
-
-from src.services.database import Database
-from src.services.analysis_service import AnalysisService
-from datetime import date, timedelta
-
-# 1. 初始化服務
-db = Database()
-analysis_service = AnalysisService(db)
-
-# 2. 定義時間段
-today = date.today()
-# 本週 (最近7天)
-period2_end = today
-period2_start = today - timedelta(days=6)
-# 上週 (再往前7天)
-period1_end = period2_start - timedelta(days=1)
-period1_start = period1_end - timedelta(days=6)
-
-# 3. 執行比較
-comparison_data = analysis_service.compare_performance_periods(
-    site_id=1, # 替換為您的站點 ID
-    period1_start=period1_start.strftime('%Y-%m-%d'),
-    period1_end=period1_end.strftime('%Y-%m-%d'),
-    period2_start=period2_start.strftime('%Y-%m-%d'),
-    period2_end=period2_end.strftime('%Y-%m-%d'),
-    group_by='query', # 或 'page'
-    limit=10 # 找出變化最大的前10名
-)
-
-# 4. 打印結果
-print(f"比較 {period1_start} ~ {period1_end} 與 {period2_start} ~ {period2_end} 的關鍵字表現：")
-for item in comparison_data:
-    print(
-        f"關鍵字: {item['item']:<40} | "
-        f"點擊變化: {item['clicks_change']:+5.0f} "
-        f"({item['period1_clicks']} -> {item['period2_clicks']})"
-    )
-```
-
-## 自動化腳本示例
-
-您可以使用 `scripts/daily_maintenance.sh` 腳本來自動化每日的數據同步、備份和清理工作。
-
-```bash
-bash scripts/daily_maintenance.sh
-```
-
-## 數據庫結構說明
-
-#### 主要數據表
-
-- `gsc_performance_data`: 核心性能數據表，包含點擊、曝光、排名等綜合維度。
-- `hourly_rankings`: 每小時關鍵字排名數據存儲。
-- `sites`: 站點基本信息存儲。
-- `keywords`: 關鍵字基本信息存儲。
-
-## 貢獻
-
-歡迎提交 Pull Requests 或開 Issues！
-
-## 許可證
-
-[MIT](LICENSE)
-
----
-
-## ⚙️ 核心概念與使用說明
-
-### 首次使用：認證流程
-
-本工具需要獲取您的授權才能訪問 Google Search Console (GSC) 數據。首次使用或憑證失效時，您需要進行一次性手動認證。
-
-1.  **啟動認證**：在終端機中運行以下指令：
     ```bash
-    gsc-db auth login
+    just dev server
     ```
-2.  **瀏覽器授權**：
-    - 指令會輸出一串 URL。請將此 URL 複製並貼到您的網頁瀏覽器中打開。
-    - 登入您要管理的 GSC 所屬的 Google 帳戶。
-    - 在 Google 的授權頁面，點擊「允許」，以授權本工具訪問您的 GSC 數據。
-3.  **獲取授權碼**：
-    - 授權後，瀏覽器會跳轉到一個本地地址（例如 `http://localhost:8000/...`），頁面可能會顯示無法連線。**這是正常現象**。
-    - 請從瀏覽器頂部的地址欄中，找到 `code=` 後面的那串長長的代碼，並將其**完整**複製下來。它看起來像這樣：`4/0AVHEtkbJ...`
-4.  **完成認證**：
-    - 回到您的終端機，將剛剛複製的授權碼貼上，然後按下 Enter。
-    - 程式會自動用此授權碼換取永久有效的憑證，並將其儲存於專案根目錄下的 `token.json` 檔案中。
 
-完成以上步驟後，您就可以在任何地方（包括 crontab 等非互動式環境中）運行 `scripts/full_sync.py` 等腳本，程式將會自動刷新憑證，無需再次手動登入。
+2.  **查看 API 文檔:**
+    伺服器運行後，請在瀏覽器中打開 [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)，您將看到一個由 Swagger UI 生成的互動式 API 文檔。
 
-### GSC 資源使用策略：域名屬性 vs. URL 字首屬性
+## 🛣️ 發展藍圖 (Roadmap)
 
-在 GSC 中，有兩種主要的網站屬性類型，了解它們的區別對於數據的準確性至關重要。
+我們為這個專案規劃了激動人心的未來！我們的目標是將此工具發展為一個全面的網站數據分析平台。歡迎您從以下方向貢獻您的才華：
 
-- **域名屬性 (Domain Property)**
+- [ ] **整合 AI Agent**: 開發一個對話式 AI 代理 (使用 LangChain, LlamaIndex 等)，能用自然語言回答關於您 GSC 數據的問題。
+- [ ] **進階數據分析**：新增更多內建的分析腳本與報告（例如：趨勢偵測、異常警報）。
+- [ ] **支援更多數據源**：整合其他數據來源，如 Google Analytics, Ahrefs 或 Semrush。
+- [ ] **Web 儀表板**：建立一個簡單的網頁介面，用以視覺化數據並與 AI Agent 互動。
+- [ ] **插件系統**：允許使用者輕鬆地加入自訂的數據擷取器或分析模組。
 
-  - **格式**：`sc-domain:example.com`
-  - **涵蓋範圍**：包含該域名下**所有**的子網域（如 `www.example.com`, `m.example.com`）和所有協定（`http://`, `https://`）。
-  - **優點**：提供了一個網站最全面、最完整的數據視圖，避免了數據的分散和遺漏。
-  - **推薦用法**：**這是我們強烈推薦使用的屬性類型。** 只要您在 GSC 中驗證了域名屬性，就應該只使用它來進行數據同步。
+## 🤝 如何貢獻 (Contributing)
 
-- **URL 字首屬性 (URL-prefix Property)**
-  - **格式**：`https://example.com/` 或 `http://www.example.com/blog/`
-  - **涵蓋範圍**：僅限於您所指定的、完全匹配的 URL 字首。例如，`http://example.com/` 的數據**不包含** `https://example.com/` 的數據。
-  - **使用時機**：
-    1.  當您因為某些原因**無法**在 GSC 中驗證整個域名時。
-    2.  當您只想針對網站的某個特定部分（例如某個國家的子目錄）進行獨立分析時。
+我們深信開源的力量，並誠摯歡迎任何形式的貢獻，無論是回報問題、建議新功能，還是直接提交程式碼。
 
-**核心原則**：為了避免數據重複計算和儲存冗餘，如果一個網站的**域名屬性**（如 `sc-domain:girlstyle.com`）已經存在，則**不應該**再單獨添加其下的任何**URL 字首屬性**（如 `https://girlstyle.com/tw/` 或 `https://girlstyle.com/sg/`）。我們的 `full_sync.py` 腳本中的站點列表已根據此原則進行了清理。
+一份好的貢獻開始於良好的溝通。您可以從查看 Issues 列表或我們上方的 **發展藍圖** 來尋找靈感。
+
+在您開始動手前，請務必閱讀我們詳細的 **貢獻指南 (CONTRIBUTING.md)**，它包含了完整的開發流程、程式碼風格和 Pull Request 指南。
+
+```bash
+# 運行所有品質檢查 (格式化、類型檢查、測試)
+just check
+```
+
+## 📄 授權條款 (License)
+
+本專案採用 MIT 授權條款。詳情請見 [LICENSE](LICENSE) 文件。

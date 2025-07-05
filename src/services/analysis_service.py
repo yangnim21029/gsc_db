@@ -6,12 +6,14 @@
 此服務依賴於 Database 服務來獲取數據。
 """
 
-import logging
 import datetime
-from typing import List, Dict, Any, Optional
+import logging
+from typing import Any, Dict, List, Optional
+
 from .database import Database
 
 logger = logging.getLogger(__name__)
+
 
 class AnalysisService:
     def __init__(self, db: Database):
@@ -24,30 +26,34 @@ class AnalysisService:
     def _get_date_range_from_days(self, site_id: int, days: int) -> Optional[tuple[str, str]]:
         """從數據庫獲取指定站點的最新日期並計算日期範圍"""
         try:
-            latest_date = self.db.get_latest_date_from_table('gsc_performance_data', site_id)
+            latest_date = self.db.get_latest_date_from_table("gsc_performance_data", site_id)
             if not latest_date:
-                logger.warning(f"在 gsc_performance_data 中找不到站點 ID {site_id} 的數據，無法確定日期範圍。")
+                logger.warning(
+                    f"在 gsc_performance_data 中找不到站點 ID {site_id} 的數據，無法確定日期範圍。"
+                )
                 return None
             end_date = latest_date
             start_date = end_date - datetime.timedelta(days=days - 1)
-            return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
+            return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
         except Exception as e:
             logger.error(f"獲取日期範圍時出錯: {e}", exc_info=True)
             return None
 
     def get_top_keywords(
-        self, site_id: int, days: int, metric: str = 'clicks', limit: int = 20
+        self, site_id: int, days: int, metric: str = "clicks", limit: int = 20
     ) -> List[Dict[str, Any]]:
         """獲取指定時間範圍內表現最佳的關鍵字"""
-        if metric not in ['clicks', 'impressions']:
+        if metric not in ["clicks", "impressions"]:
             raise ValueError("Metric must be 'clicks' or 'impressions'")
-        
+
         date_range = self._get_date_range_from_days(site_id, days)
-        if not date_range: return []
+        if not date_range:
+            return []
         start_date, end_date = date_range
 
         query = f"""
-            SELECT query, page, SUM(clicks) as total_clicks, SUM(impressions) as total_impressions, AVG(position) as avg_position
+            SELECT query, page, SUM(clicks) as total_clicks,
+                   SUM(impressions) as total_impressions, AVG(position) as avg_position
             FROM gsc_performance_data
             WHERE site_id = ? AND date BETWEEN ? AND ?
             GROUP BY query, page
@@ -55,14 +61,16 @@ class AnalysisService:
             LIMIT ?
         """
         with self.db.get_connection() as conn:
-            return [dict(row) for row in conn.execute(query, (site_id, start_date, end_date, limit)).fetchall()]
+            return [
+                dict(row)
+                for row in conn.execute(query, (site_id, start_date, end_date, limit)).fetchall()
+            ]
 
-    def get_site_performance_summary(
-        self, site_id: int, days: int
-    ) -> Dict[str, Any]:
+    def get_site_performance_summary(self, site_id: int, days: int) -> Dict[str, Any]:
         """獲取站點在指定時間範圍內的整體表現摘要"""
         date_range = self._get_date_range_from_days(site_id, days)
-        if not date_range: return {}
+        if not date_range:
+            return {}
         start_date, end_date = date_range
 
         query = """
@@ -78,12 +86,11 @@ class AnalysisService:
             summary = conn.execute(query, (site_id, start_date, end_date)).fetchone()
             return dict(summary) if summary else {}
 
-    def get_daily_performance_summary(
-        self, site_id: int, days: int
-    ) -> List[Dict[str, Any]]:
+    def get_daily_performance_summary(self, site_id: int, days: int) -> List[Dict[str, Any]]:
         """獲取指定站點在時間範圍內的每日表現摘要"""
         date_range = self._get_date_range_from_days(site_id, days)
-        if not date_range: return []
+        if not date_range:
+            return []
         start_date, end_date = date_range
 
         query = """
@@ -99,19 +106,22 @@ class AnalysisService:
             ORDER BY date
         """
         with self.db.get_connection() as conn:
-            return [dict(row) for row in conn.execute(query, (site_id, start_date, end_date)).fetchall()]
+            return [
+                dict(row) for row in conn.execute(query, (site_id, start_date, end_date)).fetchall()
+            ]
 
     def get_top_pages(
-        self, site_id: int, days: int, metric: str = 'clicks', limit: int = 20
+        self, site_id: int, days: int, metric: str = "clicks", limit: int = 20
     ) -> List[Dict[str, Any]]:
         """獲取指定時間範圍內表現最佳的頁面"""
-        if metric not in ['clicks', 'impressions']:
+        if metric not in ["clicks", "impressions"]:
             raise ValueError("Metric must be 'clicks' or 'impressions'")
 
         date_range = self._get_date_range_from_days(site_id, days)
-        if not date_range: return []
+        if not date_range:
+            return []
         start_date, end_date = date_range
-        
+
         query = f"""
             SELECT
                 page,
@@ -126,14 +136,16 @@ class AnalysisService:
             LIMIT ?
         """
         with self.db.get_connection() as conn:
-            return [dict(row) for row in conn.execute(query, (site_id, start_date, end_date, limit)).fetchall()]
+            return [
+                dict(row)
+                for row in conn.execute(query, (site_id, start_date, end_date, limit)).fetchall()
+            ]
 
-    def get_overall_summary(
-        self, site_id: int, days: int
-    ) -> Dict[str, Any]:
+    def get_overall_summary(self, site_id: int, days: int) -> Dict[str, Any]:
         """獲取指定站點在時間範圍內的整體數據摘要"""
         date_range = self._get_date_range_from_days(site_id, days)
-        if not date_range: return {}
+        if not date_range:
+            return {}
         start_date, end_date = date_range
 
         query = """
@@ -149,7 +161,7 @@ class AnalysisService:
         with self.db.get_connection() as conn:
             summary = conn.execute(query, (site_id, start_date, end_date)).fetchone()
             return dict(summary) if summary else {}
-        
+
     def get_keyword_trend(
         self, site_id: int, query_text: str, start_date: str, end_date: str
     ) -> List[Dict[str, Any]]:
@@ -166,7 +178,9 @@ class AnalysisService:
         with self.db.get_connection() as conn:
             return [
                 dict(row)
-                for row in conn.execute(query, (site_id, query_text, start_date, end_date)).fetchall()
+                for row in conn.execute(
+                    query, (site_id, query_text, start_date, end_date)
+                ).fetchall()
             ]
 
     def get_performance_data_for_visualization(
@@ -174,14 +188,14 @@ class AnalysisService:
         site_id: int,
         start_date: str,
         end_date: str,
-        group_by: str = 'query',
-        filter_term: Optional[str] = None
+        group_by: str = "query",
+        filter_term: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         為交互式可視化獲取性能數據。
         此方法取代了舊的 get_rankings 和 get_page_data。
         """
-        if group_by not in ['query', 'page']:
+        if group_by not in ["query", "page"]:
             raise ValueError("group_by 必須是 'query' 或 'page'")
 
         base_query = f"""
@@ -204,10 +218,7 @@ class AnalysisService:
         base_query += " ORDER BY date"
 
         with self.db.get_connection() as conn:
-            return [
-                dict(row)
-                for row in conn.execute(base_query, tuple(params)).fetchall()
-            ]
+            return [dict(row) for row in conn.execute(base_query, tuple(params)).fetchall()]
 
     def compare_performance_periods(
         self,
@@ -216,8 +227,8 @@ class AnalysisService:
         period1_end: str,
         period2_start: str,
         period2_end: str,
-        group_by: str = 'query',
-        limit: int = 50
+        group_by: str = "query",
+        limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """
         比較兩個不同時間段的性能數據。
@@ -231,17 +242,21 @@ class AnalysisService:
         :param limit: 返回結果的數量，按點擊變化量降序排列。
         :return: 一個包含比較數據的字典列表。
         """
-        if group_by not in ['query', 'page']:
+        if group_by not in ["query", "page"]:
             raise ValueError("group_by 必須是 'query' 或 'page'")
 
         query = f"""
             WITH
             period1_data AS (
-                SELECT {group_by} AS item, SUM(clicks) AS p1_clicks, SUM(impressions) AS p1_impressions, AVG(position) AS p1_position, AVG(ctr) AS p1_ctr
+                SELECT {group_by} AS item, SUM(clicks) AS p1_clicks,
+                       SUM(impressions) AS p1_impressions, AVG(position) AS p1_position,
+                       AVG(ctr) AS p1_ctr
                 FROM gsc_performance_data WHERE site_id = ? AND date BETWEEN ? AND ? GROUP BY {group_by}
             ),
             period2_data AS (
-                SELECT {group_by} AS item, SUM(clicks) AS p2_clicks, SUM(impressions) AS p2_impressions, AVG(position) AS p2_position, AVG(ctr) AS p2_ctr
+                SELECT {group_by} AS item, SUM(clicks) AS p2_clicks,
+                       SUM(impressions) AS p2_impressions, AVG(position) AS p2_position,
+                       AVG(ctr) AS p2_ctr
                 FROM gsc_performance_data WHERE site_id = ? AND date BETWEEN ? AND ? GROUP BY {group_by}
             )
             SELECT
@@ -263,7 +278,15 @@ class AnalysisService:
             ORDER BY clicks_change DESC
             LIMIT ?
         """
-        params = (site_id, period1_start, period1_end, site_id, period2_start, period2_end, limit)
+        params = (
+            site_id,
+            period1_start,
+            period1_end,
+            site_id,
+            period2_start,
+            period2_end,
+            limit,
+        )
         with self.db.get_connection() as conn:
             return [dict(row) for row in conn.execute(query, params).fetchall()]
 
@@ -281,13 +304,16 @@ class AnalysisService:
             LIMIT ?
         """
         with self.db.get_connection() as conn:
-            return [dict(row) for row in conn.execute(query, (site_id, start_date, end_date, limit)).fetchall()]
+            return [
+                dict(row)
+                for row in conn.execute(query, (site_id, start_date, end_date, limit)).fetchall()
+            ]
 
     def get_seasonal_trends(
-        self, site_id: int, year: int, metric: str = 'clicks'
+        self, site_id: int, year: int, metric: str = "clicks"
     ) -> List[Dict[str, Any]]:
         """分析指定年份的季節性趨勢（按月分組）"""
-        if metric not in ['clicks', 'impressions']:
+        if metric not in ["clicks", "impressions"]:
             raise ValueError("Metric must be 'clicks' or 'impressions'")
 
         query = f"""
@@ -301,8 +327,11 @@ class AnalysisService:
             return [dict(row) for row in conn.execute(query, (site_id, str(year))).fetchall()]
 
     def get_keyword_growth_analysis(
-        self, site_id: int, start_date: str, end_date: str, 
-        growth_threshold: float = 0.1
+        self,
+        site_id: int,
+        start_date: str,
+        end_date: str,
+        growth_threshold: float = 0.1,
     ) -> List[Dict[str, Any]]:
         """
         分析關鍵字的增長情況
@@ -310,4 +339,4 @@ class AnalysisService:
         """
         logger.warning("Keyword growth analysis is a simplified implementation.")
         # 在真實場景中，需要比較兩個時間段的數據
-        return [] 
+        return []

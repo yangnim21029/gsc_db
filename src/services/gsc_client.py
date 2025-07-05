@@ -1,27 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from .hourly_data import HourlyDataHandler
-from .database import Database
-import os
-import logging
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-import json
 import concurrent.futures
+import json
+import logging
+import os
 
 # 導入相關模塊
 import sys
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
+from .database import Database
+from .hourly_data import HourlyDataHandler
+
 sys.path.append(os.path.dirname(__file__))
-from .. import config
+import xml.etree.ElementTree as ET
 
 import requests
-import xml.etree.ElementTree as ET
+
+from .. import config
 
 logger = logging.getLogger(__name__)
 
@@ -49,20 +53,20 @@ class GSCClient:
 
         # 嘗試加載已有憑證，如果成功則初始化 service
         if self._load_credentials():
-            self.service = build('searchconsole', 'v1', credentials=self.credentials)
+            self.service = build("searchconsole", "v1", credentials=self.credentials)
 
         # OAuth 配置
         self.client_config = self._load_client_config()
-        current_port = os.getenv('PORT', '8000')
-        if 'web' in self.client_config:
-            self.client_config['web']['redirect_uris'] = [
-                f"http://localhost:{current_port}/auth/callback"]
+        current_port = os.getenv("PORT", "8000")
+        if "web" in self.client_config:
+            self.client_config["web"]["redirect_uris"] = [
+                f"http://localhost:{current_port}/auth/callback"
+            ]
 
         # 初始化每小時數據處理器
         self.hourly_handler = None
         if self.service:
-            self.hourly_handler = HourlyDataHandler(
-                self.service, self.database)
+            self.hourly_handler = HourlyDataHandler(self.service, self.database)
 
     def stream_site_data(self, site_url: str, start_date: str, end_date: str):
         """
@@ -72,47 +76,48 @@ class GSCClient:
         if not self.is_authenticated() or not self.service:
             raise Exception("GSC service not initialized")
 
-        search_types = ['web', 'image', 'video', 'news', 'discover', 'googleNews']
-        
+        search_types = ["web", "image", "video", "news", "discover", "googleNews"]
+
         for search_type in search_types:
             start_row = 0
             while True:
                 try:
                     request_body = {
-                        'startDate': start_date,
-                        'endDate': end_date,
-                        'dimensions': ['page', 'query', 'device'],
-                        'rowLimit': 25000,
-                        'startRow': start_row,
-                        'type': search_type
+                        "startDate": start_date,
+                        "endDate": end_date,
+                        "dimensions": ["page", "query", "device"],
+                        "rowLimit": 25000,
+                        "startRow": start_row,
+                        "type": search_type,
                     }
 
-                    response = self.service.searchanalytics().query(
-                        siteUrl=site_url,
-                        body=request_body
-                    ).execute()
-                    
+                    response = (
+                        self.service.searchanalytics()
+                        .query(siteUrl=site_url, body=request_body)
+                        .execute()
+                    )
+
                     self._track_api_request()
 
-                    rows = response.get('rows', [])
+                    rows = response.get("rows", [])
                     if not rows:
                         break
 
                     device_chunks = {}
                     for row in rows:
-                        keys = dict(zip(request_body['dimensions'], row['keys']))
-                        device = keys.get('device', 'N/A')
-                        
+                        keys = dict(zip(request_body["dimensions"], row["keys"]))
+                        device = keys.get("device", "N/A")
+
                         if device not in device_chunks:
                             device_chunks[device] = []
-                        
+
                         processed_row = {
-                            'page': keys.get('page'),
-                            'query': keys.get('query'),
-                            'clicks': row.get('clicks'),
-                            'impressions': row.get('impressions'),
-                            'ctr': row.get('ctr'),
-                            'position': row.get('position')
+                            "page": keys.get("page"),
+                            "query": keys.get("query"),
+                            "clicks": row.get("clicks"),
+                            "impressions": row.get("impressions"),
+                            "ctr": row.get("ctr"),
+                            "position": row.get("position"),
                         }
                         device_chunks[device].append(processed_row)
 
@@ -126,7 +131,9 @@ class GSCClient:
 
                 except HttpError as e:
                     if e.resp.status in [404, 403, 400]:
-                        logger.warning(f"No data or unsupported type for {site_url} with type {search_type} for date {start_date} (HTTP {e.resp.status}). Skipping.")
+                        logger.warning(
+                            f"No data or unsupported type for {site_url} with type {search_type} for date {start_date} (HTTP {e.resp.status}). Skipping."
+                        )
                         break
                     logger.error(f"HTTP error for type {search_type}: {e}", exc_info=True)
                     raise
@@ -147,47 +154,48 @@ class GSCClient:
             try:
                 # 根據官方文件修正 request_body
                 request_body = {
-                    'startDate': start_date,
-                    'endDate': end_date,
+                    "startDate": start_date,
+                    "endDate": end_date,
                     # 關鍵修正 1: dimensions 必須包含 'HOUR'
-                    'dimensions': ['HOUR', 'query', 'page', 'device'],
+                    "dimensions": ["HOUR", "query", "page", "device"],
                     # 關鍵修正 2: dataState 必須是 'HOURLY_ALL'
-                    'dataState': 'HOURLY_ALL',
-                    'rowLimit': 25000,
-                    'startRow': start_row
+                    "dataState": "HOURLY_ALL",
+                    "rowLimit": 25000,
+                    "startRow": start_row,
                 }
 
-                response = self.service.searchanalytics().query(
-                    siteUrl=site_url,
-                    body=request_body
-                ).execute()
-                
+                response = (
+                    self.service.searchanalytics()
+                    .query(siteUrl=site_url, body=request_body)
+                    .execute()
+                )
+
                 self._track_api_request()
 
-                rows = response.get('rows', [])
+                rows = response.get("rows", [])
                 if not rows:
                     break
-                
+
                 for row in rows:
-                    keys = dict(zip(request_body['dimensions'], row['keys']))
+                    keys = dict(zip(request_body["dimensions"], row["keys"]))
                     # API 回傳的 'HOUR' 鍵是一個完整的 ISO 8601 時間戳
-                    dt_str = keys.get('HOUR', '')
+                    dt_str = keys.get("HOUR", "")
                     if not dt_str:
                         continue
-                        
-                    dt_obj = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
-                    
+
+                    dt_obj = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+
                     yield {
-                        'query': keys.get('query'),
-                        'page': keys.get('page'),
-                        'device': keys.get('device'),
-                        'date': dt_obj.strftime('%Y-%m-%d'),
-                        'hour': dt_obj.hour,
-                        'hour_timestamp': dt_obj.isoformat(),
-                        'clicks': row.get('clicks', 0),
-                        'impressions': row.get('impressions', 0),
-                        'ctr': row.get('ctr', 0),
-                        'position': row.get('position', 0)
+                        "query": keys.get("query"),
+                        "page": keys.get("page"),
+                        "device": keys.get("device"),
+                        "date": dt_obj.strftime("%Y-%m-%d"),
+                        "hour": dt_obj.hour,
+                        "hour_timestamp": dt_obj.isoformat(),
+                        "clicks": row.get("clicks", 0),
+                        "impressions": row.get("impressions", 0),
+                        "ctr": row.get("ctr", 0),
+                        "position": row.get("position", 0),
                     }
 
                 if len(rows) < 25000:
@@ -205,7 +213,7 @@ class GSCClient:
     def _load_client_config(self) -> Dict[str, Any]:
         """載入 Google OAuth 客戶端配置"""
         try:
-            with open(self.client_config_path, 'r') as f:
+            with open(self.client_config_path, "r") as f:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.error(f"Failed to load client config from {self.client_config_path}: {e}")
@@ -216,13 +224,11 @@ class GSCClient:
         flow = Flow.from_client_config(
             self.client_config,
             scopes=self.scopes,
-            redirect_uri=self.client_config['web']['redirect_uris'][0]
+            redirect_uri=self.client_config["web"]["redirect_uris"][0],
         )
 
         auth_url, _ = flow.authorization_url(
-            access_type='offline',
-            include_granted_scopes='false',
-            prompt='consent'
+            access_type="offline", include_granted_scopes="false", prompt="consent"
         )
 
         return auth_url
@@ -233,7 +239,7 @@ class GSCClient:
             flow = Flow.from_client_config(
                 self.client_config,
                 scopes=self.scopes,
-                redirect_uri=self.client_config['web']['redirect_uris'][0]
+                redirect_uri=self.client_config["web"]["redirect_uris"][0],
             )
 
             flow.fetch_token(code=code)
@@ -242,10 +248,8 @@ class GSCClient:
                 self._save_credentials()
 
                 # 初始化服務和每小時處理器
-                self.service = build(
-                    'searchconsole', 'v1', credentials=self.credentials)
-                self.hourly_handler = HourlyDataHandler(
-                    self.service, self.database)
+                self.service = build("searchconsole", "v1", credentials=self.credentials)
+                self.hourly_handler = HourlyDataHandler(self.service, self.database)
 
                 logger.info("OAuth authentication successful")
                 return True
@@ -259,16 +263,16 @@ class GSCClient:
         """保存認證資訊到文件"""
         if self.credentials:
             creds_data = {
-                'token': self.credentials.token,
-                'refresh_token': self.credentials.refresh_token,
-                'token_uri': self.credentials.token_uri,
-                'client_id': self.credentials.client_id,
-                'client_secret': self.credentials.client_secret,
-                'scopes': self.credentials.scopes
+                "token": self.credentials.token,
+                "refresh_token": self.credentials.refresh_token,
+                "token_uri": self.credentials.token_uri,
+                "client_id": self.credentials.client_id,
+                "client_secret": self.credentials.client_secret,
+                "scopes": self.credentials.scopes,
             }
             try:
                 os.makedirs(os.path.dirname(self.credentials_path), exist_ok=True)
-                with open(self.credentials_path, 'w') as f:
+                with open(self.credentials_path, "w") as f:
                     json.dump(creds_data, f)
                 logger.info(f"Credentials saved to {self.credentials_path}")
             except Exception as e:
@@ -280,17 +284,19 @@ class GSCClient:
         """
         if os.path.exists(self.credentials_path):
             try:
-                with open(self.credentials_path, 'r') as f:
+                with open(self.credentials_path, "r") as f:
                     creds_data = json.load(f)
-                    self.credentials = Credentials.from_authorized_user_info(creds_data, self.scopes)
-                
+                    self.credentials = Credentials.from_authorized_user_info(
+                        creds_data, self.scopes
+                    )
+
                 # 檢查憑證是否過期，如果過期且有刷新令牌，則刷新
                 if self.credentials and self.credentials.expired and self.credentials.refresh_token:
                     logger.info("Credentials expired, attempting to refresh...")
                     self.credentials.refresh(Request())
                     self._save_credentials()  # 保存刷新後的憑證
                     logger.info("Credentials refreshed successfully.")
-                
+
                 return self.credentials is not None and self.credentials.valid
 
             except Exception as e:
@@ -330,9 +336,9 @@ class GSCClient:
             sites_response = self.service.sites().list().execute()
             sites = []
 
-            for site in sites_response.get('siteEntry', []):
-                if site['permissionLevel'] in ['siteFullUser', 'siteOwner']:
-                    sites.append(site['siteUrl'])
+            for site in sites_response.get("siteEntry", []):
+                if site["permissionLevel"] in ["siteFullUser", "siteOwner"]:
+                    sites.append(site["siteUrl"])
 
             return sites
 
@@ -350,7 +356,7 @@ class GSCClient:
 
         try:
             sitemaps_response = self.service.sitemaps().list(siteUrl=site_url).execute()
-            return sitemaps_response.get('sitemap', [])
+            return sitemaps_response.get("sitemap", [])
 
         except HttpError as e:
             logger.error(f"Failed to get sitemaps for {site_url}: {e}")
@@ -365,10 +371,9 @@ class GSCClient:
             raise Exception("GSC service not initialized")
 
         try:
-            sitemap_response = self.service.sitemaps().get(
-                siteUrl=site_url, 
-                feedpath=feedpath
-            ).execute()
+            sitemap_response = (
+                self.service.sitemaps().get(siteUrl=site_url, feedpath=feedpath).execute()
+            )
             return sitemap_response
 
         except HttpError as e:
@@ -384,7 +389,7 @@ class GSCClient:
             raise Exception("GSC service not initialized")
 
         results = {}
-        
+
         for site_url in site_urls:
             try:
                 sitemaps = self.get_sitemaps(site_url)
@@ -407,42 +412,44 @@ class GSCClient:
         try:
             # 獲取 sitemap 列表
             sitemaps = self.get_sitemaps(site_url)
-            
+
             total_pages = 0
             sitemap_details = []
-            
+
             for sitemap in sitemaps:
-                feedpath = sitemap.get('path', '')
+                feedpath = sitemap.get("path", "")
                 if feedpath:
                     details = self.get_sitemap_details(site_url, feedpath)
                     if details:
-                        contents = details.get('contents', [])
+                        contents = details.get("contents", [])
                         for content in contents:
-                            if 'submitted' in content:
-                                submitted_count = content['submitted']
+                            if "submitted" in content:
+                                submitted_count = content["submitted"]
                                 if isinstance(submitted_count, (int, float)):
                                     total_pages += int(submitted_count)
-                        
-                        sitemap_details.append({
-                            'path': feedpath,
-                            'lastSubmitted': sitemap.get('lastSubmitted'),
-                            'contents': contents
-                        })
+
+                        sitemap_details.append(
+                            {
+                                "path": feedpath,
+                                "lastSubmitted": sitemap.get("lastSubmitted"),
+                                "contents": contents,
+                            }
+                        )
 
             return {
-                'site_url': site_url,
-                'total_sitemaps': len(sitemaps),
-                'total_indexed_pages': total_pages,
-                'sitemap_details': sitemap_details
+                "site_url": site_url,
+                "total_sitemaps": len(sitemaps),
+                "total_indexed_pages": total_pages,
+                "sitemap_details": sitemap_details,
             }
 
         except Exception as e:
             logger.error(f"Failed to get indexed pages count for {site_url}: {e}")
             return {
-                'site_url': site_url,
-                'total_sitemaps': 0,
-                'total_indexed_pages': 0,
-                'sitemap_details': []
+                "site_url": site_url,
+                "total_sitemaps": 0,
+                "total_indexed_pages": 0,
+                "sitemap_details": [],
             }
 
     def get_url_inspection(self, site_url: str, inspection_url: str) -> Dict[str, Any]:
@@ -454,11 +461,8 @@ class GSCClient:
             raise Exception("GSC service not initialized")
 
         try:
-            request = {
-                'inspectionUrl': inspection_url,
-                'siteUrl': site_url
-            }
-            
+            request = {"inspectionUrl": inspection_url, "siteUrl": site_url}
+
             response = self.service.urlInspection().index().inspect(request).execute()
             return response
 
@@ -466,7 +470,9 @@ class GSCClient:
             logger.error(f"獲取 URL 檢查結果時出錯: {e}")
             return {"error": str(e)}
 
-    def get_sample_pages_from_analytics(self, site_url: str, start_date: str, end_date: str) -> Dict[str, Any]:
+    def get_sample_pages_from_analytics(
+        self, site_url: str, start_date: str, end_date: str
+    ) -> Dict[str, Any]:
         """
         [重構] 從搜索分析中獲取頁面樣本數據，以近似模擬索引覆蓋情況。
         原名 get_index_coverage_report，已重命名以更準確地反映其功能。
@@ -476,15 +482,19 @@ class GSCClient:
             return {"error": "GSC service not initialized."}
         try:
             # 使用 searchanalytics API 獲取一段時間內的頁面數據
-            response = self.service.searchanalytics().query(
-                siteUrl=site_url,
-                body={
-                    'startDate': start_date,
-                    'endDate': end_date,
-                'dimensions': ['page'],
-                    'rowLimit': 500  # 獲取一個樣本量
-                }
-            ).execute()
+            response = (
+                self.service.searchanalytics()
+                .query(
+                    siteUrl=site_url,
+                    body={
+                        "startDate": start_date,
+                        "endDate": end_date,
+                        "dimensions": ["page"],
+                        "rowLimit": 500,  # 獲取一個樣本量
+                    },
+                )
+                .execute()
+            )
             self._track_api_request()
             return response
         except Exception as e:
@@ -504,82 +514,86 @@ class GSCClient:
             return response
         except HttpError as e:
             logger.error(f"Failed to get crawl stats for {site_url}: {e}")
-            return {
-                "error": str(e),
-                "status": e.resp.status
-            }
+            return {"error": str(e), "status": e.resp.status}
         except Exception as e:
             logger.error(f"An unexpected error occurred while fetching crawl stats: {e}")
             return {"error": str(e)}
 
-    def get_indexed_pages_via_search_analytics(self, site_url: str, start_date: Optional[str], end_date: Optional[str]) -> List[Dict[str, Any]]:
+    def get_indexed_pages_via_search_analytics(
+        self, site_url: str, start_date: Optional[str], end_date: Optional[str]
+    ) -> List[Dict[str, Any]]:
         """通過搜索分析數據獲取索引頁面列表"""
         if not self.is_authenticated() or not self.service:
             raise Exception("GSC service not initialized")
 
         if not start_date:
-            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
         if not end_date:
-            end_date = datetime.now().strftime('%Y-%m-%d')
+            end_date = datetime.now().strftime("%Y-%m-%d")
 
         try:
             # 獲取頁面維度的數據
             pages_data = self.get_search_analytics_batch(
-                site_url, start_date, end_date,
-                dimensions=['page']
+                site_url, start_date, end_date, dimensions=["page"]
             )
-            
+
             indexed_pages = []
             for row in pages_data:
-                page = row.get('keys', [''])[0]
+                page = row.get("keys", [""])[0]
                 if page:
-                    indexed_pages.append({
-                        'page': page,
-                        'clicks': row.get('clicks', 0),
-                        'impressions': row.get('impressions', 0),
-                        'ctr': row.get('ctr', 0),
-                        'position': row.get('position', 0)
-                    })
-            
+                    indexed_pages.append(
+                        {
+                            "page": page,
+                            "clicks": row.get("clicks", 0),
+                            "impressions": row.get("impressions", 0),
+                            "ctr": row.get("ctr", 0),
+                            "position": row.get("position", 0),
+                        }
+                    )
+
             return indexed_pages
 
         except HttpError as e:
             logger.error(f"Failed to get indexed pages via search analytics for {site_url}: {e}")
             return []
 
-    def get_all_indexed_pages(self, site_url: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:
+    def get_all_indexed_pages(
+        self,
+        site_url: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """獲取站點的所有索引頁面信息（綜合方法）"""
-        
+
         # 確保日期不為 None
-        final_start_date = start_date or (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-        final_end_date = end_date or datetime.now().strftime('%Y-%m-%d')
-        
+        final_start_date = start_date or (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        final_end_date = end_date or datetime.now().strftime("%Y-%m-%d")
+
         try:
             # 1. 獲取 sitemap 信息
             sitemap_info = self.get_indexed_pages_count(site_url)
-            
+
             # 2. 獲取搜索分析中的索引頁面
-            search_analytics_pages = self.get_indexed_pages_via_search_analytics(site_url, final_start_date, final_end_date)
-            
+            search_analytics_pages = self.get_indexed_pages_via_search_analytics(
+                site_url, final_start_date, final_end_date
+            )
+
             # 3. 獲取爬蟲統計
             crawl_stats = self.get_crawl_stats(site_url)
-            
+
             return {
-                'site_url': site_url,
-                'date_range': f"{final_start_date} to {final_end_date}",
-                'sitemap_info': sitemap_info,
-                'search_analytics_pages': search_analytics_pages,
-                'crawl_stats': crawl_stats,
-                'total_pages_from_search': len(search_analytics_pages),
-                'total_pages_from_sitemap': sitemap_info.get('total_indexed_pages', 0)
+                "site_url": site_url,
+                "date_range": f"{final_start_date} to {final_end_date}",
+                "sitemap_info": sitemap_info,
+                "search_analytics_pages": search_analytics_pages,
+                "crawl_stats": crawl_stats,
+                "total_pages_from_search": len(search_analytics_pages),
+                "total_pages_from_sitemap": sitemap_info.get("total_indexed_pages", 0),
             }
 
         except Exception as e:
             logger.error(f"Failed to get all indexed pages for {site_url}: {e}")
-            return {
-                'site_url': site_url,
-                'error': str(e)
-            }
+            return {"site_url": site_url, "error": str(e)}
 
     def get_sitemap_urls_for_site(self, site_url: str) -> List[str]:
         """
@@ -590,22 +604,24 @@ class GSCClient:
         try:
             # 首先從 robots.txt 獲取 sitemaps
             sitemap_paths = self.get_sitemaps_from_robots(site_url)
-            
+
             # 如果 robots.txt 中沒有，則嘗試從 GSC API 獲取
             if not sitemap_paths:
                 sitemaps = self.get_sitemaps(site_url)
-                sitemap_paths = [s['path'] for s in sitemaps]
+                sitemap_paths = [s["path"] for s in sitemaps]
 
             # 遍歷所有找到的 sitemap 路徑
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future_to_url = {executor.submit(self.get_sitemap_urls, path): path for path in sitemap_paths}
+                future_to_url = {
+                    executor.submit(self.get_sitemap_urls, path): path for path in sitemap_paths
+                }
                 for future in concurrent.futures.as_completed(future_to_url):
                     try:
                         urls = future.result()
                         all_urls.update(urls)
                     except Exception as exc:
                         logger.error(f"從 sitemap {future_to_url[future]} 獲取 URL 時出錯: {exc}")
-            
+
             return list(all_urls)
         except Exception as e:
             logger.error(f"為站點 {site_url} 獲取 sitemap URLs 時出錯: {e}")
@@ -613,35 +629,35 @@ class GSCClient:
 
     def get_sitemaps_from_robots(self, site_url: str) -> List[str]:
         """從 robots.txt 文件中獲取 sitemap URL"""
+
         import requests
-        import re
-        
+
         try:
             # 構建 robots.txt URL
-            if site_url.startswith('sc-domain:'):
-                domain = site_url.replace('sc-domain:', '')
+            if site_url.startswith("sc-domain:"):
+                domain = site_url.replace("sc-domain:", "")
                 robots_url = f"https://{domain}/robots.txt"
             else:
                 # 確保有協議
-                if not site_url.startswith(('http://', 'https://')):
+                if not site_url.startswith(("http://", "https://")):
                     site_url = f"https://{site_url}"
                 robots_url = f"{site_url.rstrip('/')}/robots.txt"
-            
+
             # 獲取 robots.txt 內容
             response = requests.get(robots_url, timeout=30)
             response.raise_for_status()
-            
+
             # 解析 sitemap 行
             sitemaps = []
-            for line in response.text.split('\n'):
+            for line in response.text.split("\n"):
                 line = line.strip()
-                if line.lower().startswith('sitemap:'):
+                if line.lower().startswith("sitemap:"):
                     sitemap_url = line[8:].strip()
                     if sitemap_url:
                         sitemaps.append(sitemap_url)
-            
+
             return sitemaps
-            
+
         except Exception as e:
             logger.warning(f"Failed to get sitemaps from robots.txt for {site_url}: {e}")
             return []
@@ -652,21 +668,21 @@ class GSCClient:
         這是統一的、健壯的 sitemap 解析器。
         """
         all_urls: List[str] = []
-        
+
         try:
             logger.info(f"正在處理: {sitemap_path}")
             response = requests.get(sitemap_path, timeout=30)
             response.raise_for_status()
-            
+
             content = response.content
             root = ET.fromstring(content)
-            
-            namespace = ''
-            if '}' in root.tag:
-                namespace = root.tag.split('}')[0].strip('{')
-            
+
+            namespace = ""
+            if "}" in root.tag:
+                namespace = root.tag.split("}")[0].strip("{")
+
             # 檢查是 sitemap index 還是 sitemap
-            if root.tag.endswith('sitemapindex'):
+            if root.tag.endswith("sitemapindex"):
                 logger.info(f"{sitemap_path} 是一個站點地圖索引，正在解析子地圖...")
                 sitemap_links = [
                     elem.text
@@ -674,8 +690,8 @@ class GSCClient:
                     if elem.text
                 ]
                 for link in sitemap_links:
-                    all_urls.extend(self.get_sitemap_urls(link)) # 遞迴調用
-            elif root.tag.endswith('urlset'):
+                    all_urls.extend(self.get_sitemap_urls(link))  # 遞迴調用
+            elif root.tag.endswith("urlset"):
                 logger.info(f"{sitemap_path} 是一個標準站點地圖，正在解析 URL...")
                 urls = [
                     elem.text
@@ -705,7 +721,7 @@ class GSCClient:
             db_urls = set(self.database.get_all_pages_for_site(site_id=site_id))
             if not db_urls:
                 logger.warning(f"在數據庫中找不到站點 ID {site_id} 的任何頁面數據。")
-            
+
             # 2. 獲取 sitemap 中的 URL
             sitemap_urls = set(self.get_sitemap_urls_for_site(site_url))
             if not sitemap_urls:
@@ -715,7 +731,7 @@ class GSCClient:
             only_in_db = sorted(list(db_urls - sitemap_urls))
             only_in_sitemap = sorted(list(sitemap_urls - db_urls))
             in_both = sorted(list(db_urls & sitemap_urls))
-            
+
             return {
                 "site_url": site_url,
                 "db_url_count": len(db_urls),
@@ -723,19 +739,20 @@ class GSCClient:
                 "common_url_count": len(in_both),
                 "only_in_db": only_in_db,
                 "only_in_sitemap": only_in_sitemap,
-                "in_both": in_both
+                "in_both": in_both,
             }
         except Exception as e:
             logger.error(f"比較數據庫和 sitemap 時出錯: {e}", exc_info=True)
             return {"error": str(e)}
 
-    def get_search_analytics(self,
-                             site_url: str,
-                             start_date: str,
-                             end_date: str,
-                             dimensions: List[str] = ['query'],
-                             row_limit: int = 1000) -> List[Dict[str,
-                                                                 Any]]:
+    def get_search_analytics(
+        self,
+        site_url: str,
+        start_date: str,
+        end_date: str,
+        dimensions: Optional[List[str]] = None,
+        row_limit: int = 1000,
+    ) -> List[Dict[str, Any]]:
         """獲取搜索分析數據"""
         if not self.is_authenticated():
             raise Exception("Not authenticated with GSC")
@@ -743,41 +760,47 @@ class GSCClient:
         if self.service is None:
             raise Exception("GSC service not initialized")
 
+        if dimensions is None:
+            dimensions = ["query"]
+
         try:
             request = {
-                'startDate': start_date,
-                'endDate': end_date,
-                'dimensions': dimensions,
-                'rowLimit': row_limit,
-                'startRow': 0
+                "startDate": start_date,
+                "endDate": end_date,
+                "dimensions": dimensions,
+                "rowLimit": row_limit,
+                "startRow": 0,
             }
 
-            response = self.service.searchanalytics().query(
-                siteUrl=site_url,
-                body=request
-            ).execute()
+            response = (
+                self.service.searchanalytics().query(siteUrl=site_url, body=request).execute()
+            )
 
             self._track_api_request()  # 追蹤API使用
-            return response.get('rows', [])
+            return response.get("rows", [])
 
         except HttpError as e:
             logger.error(f"Failed to get search analytics for {site_url}: {e}")
             return []
 
-    def get_search_analytics_batch(self,
-                                   site_url: str,
-                                   start_date: str,
-                                   end_date: str,
-                                   dimensions: List[str] = ['query'],
-                                   device_filter: Optional[str] = None,
-                                   max_total_rows: Optional[int] = None) -> List[Dict[str,
-                                                                                      Any]]:
+    def get_search_analytics_batch(
+        self,
+        site_url: str,
+        start_date: str,
+        end_date: str,
+        dimensions: Optional[List[str]] = None,
+        device_filter: Optional[str] = None,
+        max_total_rows: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
         """批次獲取搜索分析數據"""
         if not self.is_authenticated():
             raise Exception("Not authenticated with GSC")
 
         if self.service is None:
             raise Exception("GSC service not initialized")
+
+        if dimensions is None:
+            dimensions = ["query"]
 
         all_rows = []
         max_rows_per_request = 25000
@@ -789,37 +812,39 @@ class GSCClient:
                 if max_total_rows is None:
                     row_limit = max_rows_per_request
                 else:
-                    row_limit = min(
-                        max_rows_per_request,
-                        max_total_rows - len(all_rows))
+                    row_limit = min(max_rows_per_request, max_total_rows - len(all_rows))
 
                 logger.info(
-                    f"Requesting batch: startRow={start_row}, rowLimit={row_limit}, total_so_far={len(all_rows)}")
+                    f"Requesting batch: startRow={start_row}, rowLimit={row_limit}, total_so_far={len(all_rows)}"
+                )
 
                 request = {
-                    'startDate': start_date,
-                    'endDate': end_date,
-                    'dimensions': dimensions,
-                    'rowLimit': row_limit,
-                    'startRow': start_row
+                    "startDate": start_date,
+                    "endDate": end_date,
+                    "dimensions": dimensions,
+                    "rowLimit": row_limit,
+                    "startRow": start_row,
                 }
 
                 if device_filter:
-                    request['dimensionFilterGroups'] = [{
-                        'filters': [{
-                            'dimension': 'device',
-                            'operator': 'equals',
-                            'expression': device_filter
-                        }]
-                    }]
+                    request["dimensionFilterGroups"] = [
+                        {
+                            "filters": [
+                                {
+                                    "dimension": "device",
+                                    "operator": "equals",
+                                    "expression": device_filter,
+                                }
+                            ]
+                        }
+                    ]
 
-                response = self.service.searchanalytics().query(
-                    siteUrl=site_url,
-                    body=request
-                ).execute()
+                response = (
+                    self.service.searchanalytics().query(siteUrl=site_url, body=request).execute()
+                )
 
                 self._track_api_request()  # 追蹤API使用
-                rows = response.get('rows', [])
+                rows = response.get("rows", [])
                 logger.info(f"Received {len(rows)} rows from GSC API")
 
                 if not rows:
@@ -837,35 +862,28 @@ class GSCClient:
 
                 # 如果返回行數少於請求，但大於 1000，繼續嘗試下一頁
                 if len(rows) < max_rows_per_request and len(rows) < 1000:
-                    logger.info(
-                        f"Received only {len(rows)} rows (< 1000), likely end of data")
+                    logger.info(f"Received only {len(rows)} rows (< 1000), likely end of data")
                     break
 
         except HttpError as e:
-            logger.error(
-                f"Failed to get search analytics batch for {site_url}: {e}")
+            logger.error(f"Failed to get search analytics batch for {site_url}: {e}")
 
         return all_rows
 
-    def get_keywords_for_site(
-            self,
-            site_url: str,
-            limit: int = 100) -> List[str]:
+    def get_keywords_for_site(self, site_url: str, limit: int = 100) -> List[str]:
         """獲取站點的熱門關鍵字"""
         try:
             data = self.get_search_analytics_batch(
                 site_url,
-                (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
-                datetime.now().strftime('%Y-%m-%d'),
-                dimensions=['query'],
-                max_total_rows=limit
+                (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+                datetime.now().strftime("%Y-%m-%d"),
+                dimensions=["query"],
+                max_total_rows=limit,
             )
 
             # 按點擊數排序
-            sorted_data = sorted(
-                data, key=lambda x: x.get(
-                    'clicks', 0), reverse=True)
-            return [row['keys'][0] for row in sorted_data[:limit]]
+            sorted_data = sorted(data, key=lambda x: x.get("clicks", 0), reverse=True)
+            return [row["keys"][0] for row in sorted_data[:limit]]
 
         except Exception as e:
             logger.error(f"Failed to get keywords for {site_url}: {e}")
@@ -876,39 +894,41 @@ class GSCClient:
         now = datetime.now()
         current_minute = now.replace(second=0, microsecond=0)
         current_date = now.date()
-        
+
         # 重置每日計數器
         if current_date != self.today:
             self.api_requests_today = 0
             self.today = current_date
             # 為新的一天創建數據庫記錄
             self._load_api_usage_from_db()
-            
+
         # 重置每分鐘計數器
         if current_minute != self.last_minute_reset:
             self.api_requests_this_minute = 0
             self.last_minute_reset = current_minute
-            
+
         self.api_requests_today += 1
         self.api_requests_this_minute += 1
-        
+
         # 保存到數據庫
         self._save_api_usage_to_db()
-        
+
         # 記錄到日誌
-        logger.info(f"API請求計數: 今日 {self.api_requests_today}, 本分鐘 {self.api_requests_this_minute}")
+        logger.info(
+            f"API請求計數: 今日 {self.api_requests_today}, 本分鐘 {self.api_requests_this_minute}"
+        )
 
     def get_api_usage_stats(self) -> Dict[str, Any]:
         """獲取API使用統計"""
         return {
-            'requests_today': self.api_requests_today,
-            'requests_this_minute': self.api_requests_this_minute,
-            'daily_limit': 100000,
-            'minute_limit': 1200,
-            'daily_remaining': 100000 - self.api_requests_today,
-            'minute_remaining': 1200 - self.api_requests_this_minute,
-            'daily_usage_percent': (self.api_requests_today / 100000) * 100,
-            'minute_usage_percent': (self.api_requests_this_minute / 1200) * 100
+            "requests_today": self.api_requests_today,
+            "requests_this_minute": self.api_requests_this_minute,
+            "daily_limit": 100000,
+            "minute_limit": 1200,
+            "daily_remaining": 100000 - self.api_requests_today,
+            "minute_remaining": 1200 - self.api_requests_this_minute,
+            "daily_usage_percent": (self.api_requests_today / 100000) * 100,
+            "minute_usage_percent": (self.api_requests_this_minute / 1200) * 100,
         }
 
     def _load_api_usage_from_db(self):
@@ -916,34 +936,34 @@ class GSCClient:
         try:
             with self.database.get_connection() as conn:
                 # 創建API使用統計表（如果不存在）
-                conn.execute('''
+                conn.execute("""
                     CREATE TABLE IF NOT EXISTS api_usage_stats (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         date TEXT NOT NULL UNIQUE,
                         requests_count INTEGER DEFAULT 0,
                         last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
-                ''')
-                
+                """)
+
                 # 載入今日的計數
-                today_str = self.today.strftime('%Y-%m-%d')
+                today_str = self.today.strftime("%Y-%m-%d")
                 cursor = conn.execute(
-                    'SELECT requests_count FROM api_usage_stats WHERE date = ?', 
-                    (today_str,)
+                    "SELECT requests_count FROM api_usage_stats WHERE date = ?",
+                    (today_str,),
                 )
                 result = cursor.fetchone()
-                
+
                 if result:
-                    self.api_requests_today = result['requests_count']
+                    self.api_requests_today = result["requests_count"]
                     logger.info(f"載入今日API使用計數: {self.api_requests_today}")
                 else:
                     # 如果沒有記錄，創建新記錄
                     conn.execute(
-                        'INSERT INTO api_usage_stats (date, requests_count) VALUES (?, 0)',
-                        (today_str,)
+                        "INSERT INTO api_usage_stats (date, requests_count) VALUES (?, 0)",
+                        (today_str,),
                     )
                     conn.commit()
-                    
+
         except Exception as e:
             logger.error(f"載入API使用統計失敗: {e}")
 
@@ -951,13 +971,16 @@ class GSCClient:
         """保存今日API使用計數到數據庫"""
         try:
             with self.database.get_connection() as conn:
-                today_str = self.today.strftime('%Y-%m-%d')
-                conn.execute('''
-                    UPDATE api_usage_stats 
-                    SET requests_count = ?, last_updated = CURRENT_TIMESTAMP 
+                today_str = self.today.strftime("%Y-%m-%d")
+                conn.execute(
+                    """
+                    UPDATE api_usage_stats
+                    SET requests_count = ?, last_updated = CURRENT_TIMESTAMP
                     WHERE date = ?
-                ''', (self.api_requests_today, today_str))
+                """,
+                    (self.api_requests_today, today_str),
+                )
                 conn.commit()
-                
+
         except Exception as e:
             logger.error(f"保存API使用統計失敗: {e}")

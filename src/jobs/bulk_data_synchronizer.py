@@ -1,239 +1,221 @@
 #!/usr/bin/env python3
 """
-GSC 批量數據同步器
-重構為可調用函數，支持 CLI 整合
+GSC 數據同步作業
+- 已重構為可直接調用的函數。
+- 包含進度條、重試、斷點續傳和多種同步模式。
 """
-
 import logging
+import time
+import traceback
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
-from pathlib import Path
-import time
 
-# 專案模組導入
-from .. import config
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.panel import Panel
+from rich.table import Table
+import typer
+
 from ..services.gsc_client import GSCClient
-from ..services.database import Database
+from ..services.database import Database, SyncMode
+from ..utils.state_manager import StateManager
 
-# 設置日誌
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-def check_data_exists(site_id: int, date_str: str) -> bool:
-    """檢查指定日期的數據是否已存在"""
-    import sqlite3
-    try:
-        conn = sqlite3.connect(str(config.DB_PATH))
-        cursor = conn.execute(
-            'SELECT COUNT(*) FROM daily_rankings WHERE site_id = ? AND date = ?',
-            (site_id, date_str)
-        )
-        count = cursor.fetchone()[0]
-        conn.close()
-        return count > 0
-    except Exception:
-        return False
-
-
-def sync_single_day(site_id: int, date_str: str, use_new_cli: bool = True) -> bool:
-    """同步單日數據"""
-    print(f"🔄 同步 Site {site_id} - {date_str}")
-
-    if use_new_cli:
-        cmd = [
-            'python', 'main.py', 'sync',
-            '--site-id', str(site_id),
-            '--start-date', date_str,
-            '--end-date', date_str
-        ]
-    else:
-        cmd = [
-            'python', 'console_commands.py', 'sync',
-            '--site-id', str(site_id),
-            '--start-date', date_str,
-            '--end-date', date_str
-        ]
-
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=300)  # 5分鐘超時
-        if result.returncode == 0:
-            print(f"✅ {date_str} 完成")
-            return True
-        else:
-            print(f"❌ {date_str} 失敗: {result.stderr}")
-            return False
-    except subprocess.TimeoutExpired:
-        print(f"⏰ {date_str} 超時")
-        return False
-    except Exception as e:
-        print(f"💥 {date_str} 錯誤: {e}")
-        return False
-
-
-def sync_month(site_id: int, year: int, month: int, use_new_cli: bool = True) -> Dict[str, int]:
-    """同步整月數據"""
-    start_date = datetime(year, month, 1)
-    if month == 12:
-        end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
-    else:
-        end_date = datetime(year, month + 1, 1) - timedelta(days=1)
-
-    print(f"📅 開始同步 Site {site_id} - {year}-{month:02d}")
-    print(
-        f"日期範圍: {start_date.strftime('%Y-%m-%d')} 到 {end_date.strftime('%Y-%m-%d')}")
-
-    success_count = 0
-    fail_count = 0
-    skip_count = 0
-
-    # 計算總天數用於進度條
-    total_days = (end_date - start_date).days + 1
-    
-    current_date = start_date
-    with tqdm(total=total_days, desc=f"同步 {year}-{month:02d}", unit="天") as pbar:
-        while current_date <= end_date:
-            date_str = current_date.strftime('%Y-%m-%d')
-
-            # 先檢查是否已存在
-            if check_data_exists(site_id, date_str):
-                print(f"⏭️  {date_str} 已存在，跳過")
-                skip_count += 1
-            else:
-                if sync_single_day(site_id, date_str, use_new_cli):
-                    success_count += 1
-                    # 成功後間隔一下避免API限制
-                    time.sleep(2)
-                else:
-                    fail_count += 1
-
-            current_date += timedelta(days=1)
-            pbar.update(1)
-
-    print("\n📊 同步結果:")
-    print(f"✅ 成功: {success_count} 天")
-    print(f"⏭️  跳過: {skip_count} 天")
-    print(f"❌ 失敗: {fail_count} 天")
-    
-    return {
-        'success': success_count,
-        'skip': skip_count,
-        'fail': fail_count,
-        'total': total_days
-    }
-
+logger = logging.getLogger("rich")
+console = Console()
 
 def run_sync(
-    sites: Optional[List[str]] = None, 
-    days: int = 7,
-    site_ids: Optional[List[int]] = None,
-    year: Optional[int] = None,
-    month: Optional[int] = None,
-    use_new_cli: bool = True
-) -> Dict[str, Any]:
+    db: Database,
+    client: GSCClient,
+    site_url: Optional[str],
+    site_id: Optional[int],
+    all_sites: bool,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    days: int,
+    retries: int,
+    retry_delay: int,
+    sync_mode: SyncMode,
+    resume: bool,
+):
     """
-    同步 Google Search Console 數據的主函數
-    
-    Args:
-        sites: 站點 URL 列表（用於新的 CLI 同步）
-        days: 同步最近幾天（用於新的 CLI 同步）
-        site_ids: 站點 ID 列表（用於批量同步）
-        year: 年份（用於月度同步）
-        month: 月份（用於月度同步）
-        use_new_cli: 是否使用新的 CLI (main.py)
-    
-    Returns:
-        同步結果統計
+    執行 GSC 數據的每日同步作業。
     """
-    results = {
-        'total_sites': 0,
-        'successful_sites': 0,
-        'failed_sites': 0,
-        'details': []
-    }
+    date_list = _get_sync_dates(start_date, end_date, days)
+    sites_to_sync = _get_sites_to_sync(db, site_url, site_id, all_sites)
+
+    start_site_index, start_date_index = 0, 0
     
-    # 新的 CLI 同步方式
-    if sites is not None or (site_ids is None and year is None and month is None):
-        print(f"🔄 使用新 CLI 同步 {days} 天數據...")
-        
-        if sites:
-            for site in sites:
-                print(f"📊 同步站點: {site}")
-                cmd = ['python', 'main.py', 'sync', '--site-url', site, '--days', str(days)]
+    if resume:
+        state = StateManager.load_sync_state()
+        if state:
+            current_site_ids = [s['id'] for s in sites_to_sync]
+            if state.get('sites_to_sync_ids') == current_site_ids:
                 try:
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-                    if result.returncode == 0:
-                        print(f"✅ {site} 同步成功")
-                        results['successful_sites'] += 1
+                    last_site_id = state.get('last_successful_site_id')
+                    last_date = state.get('last_successful_date')
+                    
+                    if last_site_id is not None:
+                        start_site_index = next(i for i, s in enumerate(sites_to_sync) if s['id'] == last_site_id)
+                    
+                    if last_date is not None and last_date != "start":
+                        start_date_index = date_list.index(last_date) + 1
+                    
+                    if start_date_index >= len(date_list):
+                        start_site_index += 1
+                        start_date_index = 0
+
+                    if start_site_index < len(sites_to_sync):
+                        resume_site_name = sites_to_sync[start_site_index]['name']
+                        resume_date = date_list[start_date_index]
+                        logger.info(f"[bold yellow]🔄 任務恢復中...[/bold yellow] 將從站點 '{resume_site_name}' 的日期 '{resume_date}' 開始。")
                     else:
-                        print(f"❌ {site} 同步失敗: {result.stderr}")
-                        results['failed_sites'] += 1
-                except Exception as e:
-                    print(f"💥 {site} 同步錯誤: {e}")
-                    results['failed_sites'] += 1
-                results['total_sites'] += 1
+                        logger.info("[bold green]✅ 所有任務都已在之前的會話中完成。[/bold green]")
+                        return
+                except (ValueError, StopIteration):
+                    logger.warning("[bold yellow]⚠️ 無法解析恢復狀態，將從頭開始。[/bold yellow]")
+                    start_site_index, start_date_index = 0, 0
         else:
-            # 同步所有站點
-            print("🌐 同步所有站點...")
-            cmd = ['python', 'main.py', 'sync', '--all-sites', '--days', str(days)]
-            try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-                if result.returncode == 0:
-                    print("✅ 所有站點同步成功")
-                    results['successful_sites'] = 1
-                else:
-                    print(f"❌ 同步失敗: {result.stderr}")
-                    results['failed_sites'] = 1
-            except Exception as e:
-                print(f"💥 同步錯誤: {e}")
-                results['failed_sites'] = 1
-            results['total_sites'] = 1
+                logger.info("[bold yellow]⚠️ 同步目標已改變，恢復狀態已重置。[/bold yellow]")
+
+    total_days_to_sync = len(date_list) * len(sites_to_sync)
+    completed_days = start_site_index * len(date_list) + start_date_index
     
-    # 批量同步方式（月度同步）
-    elif site_ids and year and month:
-        print(f"📅 批量同步 {len(site_ids)} 個站點的 {year}-{month:02d} 數據...")
+    progress = Progress(
+        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"), TimeElapsedColumn(), TimeRemainingColumn(),
+        console=console
+    )
+    
+    total_stats = {'inserted': 0, 'updated': 0, 'skipped': 0, 'failed': 0}
+
+    try:
+        with progress:
+            task = progress.add_task("[green]同步進度...", total=total_days_to_sync, completed=completed_days)
+            for i in range(start_site_index, len(sites_to_sync)):
+                site = sites_to_sync[i]
+                current_site_stats = {'inserted': 0, 'updated': 0, 'skipped': 0, 'failed': 0}
+                site_name = site['name']
+                
+                start_j = start_date_index if i == start_site_index else 0
+                for j in range(start_j, len(date_list)):
+                    date = date_list[j]
+                    progress.update(task, description=f"同步 [{site_name}] 日期 [{date}]")
+                    
+                    if sync_mode.value == "replace":
+                        db.delete_performance_data_for_day(site['id'], date)
+
+                    for attempt in range(retries):
+                        try:
+                            day_stats = {'inserted': 0, 'updated': 0, 'skipped': 0}
+                            data_stream = client.stream_site_data(
+                                site_url=site['domain'],
+                                start_date=date,
+                                end_date=date
+                            )
+                            
+                            for device, search_type, chunk in data_stream:
+                                chunk_stats = db.save_data_chunk(
+                                    chunk=chunk,
+                                    site_id=site['id'],
+                                    sync_mode=sync_mode.value,
+                                    date_str=date,
+                                    device=device,
+                                    search_type=search_type
+                                )
+                                for key in day_stats:
+                                    day_stats[key] += chunk_stats.get(key, 0)
+
+                            for key in total_stats:
+                                total_stats[key] += day_stats.get(key, 0)
+                                current_site_stats[key] += day_stats.get(key, 0)
+                            
+                            logger.info(
+                                f"站點 [bold cyan]{site_name}[/bold cyan] 日期 [bold]{date}[/bold] "
+                                f"- [green]插入: {day_stats.get('inserted', 0)}[/green], "
+                                f"[blue]更新: {day_stats.get('updated', 0)}[/blue], "
+                                f"[yellow]跳過: {day_stats.get('skipped', 0)}[/yellow]"
+                            )
+                            StateManager.save_sync_state({
+                                'last_successful_site_id': site['id'],
+                                'last_successful_date': date,
+                                'sites_to_sync_ids': [s['id'] for s in sites_to_sync]
+                            })
+                            break
+                        except Exception as e:
+                            logger.error(f"同步站點 {site_name} 日期 {date} 第 {attempt + 1} 次嘗試失敗: {e}")
+                            if attempt == retries - 1:
+                                total_stats['failed'] += 1
+                                current_site_stats['failed'] += 1
+                                logger.error(f"站點 [bold red]{site_name}[/bold red] 日期 [bold red]{date}[/bold red] 在 {retries} 次重試後最終失敗。")
+                                logger.debug(traceback.format_exc())
+                            else:
+                                time.sleep(retry_delay)
+                    progress.advance(task)
+
+    except Exception as e:
+        logger.error(f"同步過程中發生意外錯誤: {e}")
+    finally:
+        console.print(Panel("[bold green]同步任務完成[/bold green]", title="總結"))
+        summary_table = Table(title="同步結果統計")
+        summary_table.add_column("項目", style="cyan")
+        summary_table.add_column("數量", style="magenta", justify="right")
+        summary_table.add_row("插入記錄", str(total_stats['inserted']))
+        summary_table.add_row("更新記錄", str(total_stats['updated']))
+        summary_table.add_row("跳過記錄", str(total_stats['skipped']))
+        summary_table.add_row("失敗天數", str(total_stats['failed']))
+        console.print(summary_table)
+
+
+def _get_sync_dates(start_date: Optional[str], end_date: Optional[str], days: int) -> List[str]:
+    """根據輸入參數生成日期列表"""
+    try:
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d') if end_date else datetime.now() - timedelta(days=1)
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d') if start_date else end_dt - timedelta(days=days - 1)
+    except ValueError:
+        logger.error("❌ 日期格式錯誤，請使用 YYYY-MM-DD")
+        raise typer.Exit(1)
+
+    if start_dt > end_dt:
+        logger.error(f"❌ 開始日期 ({start_dt.date()}) 不能晚於結束日期 ({end_dt.date()})")
+        raise typer.Exit(1)
         
-        for site_id in tqdm(site_ids, desc="處理站點", unit="站點"):
+    return [(start_dt + timedelta(days=x)).strftime('%Y-%m-%d') for x in range((end_dt - start_dt).days + 1)]
+
+
+def _get_sites_to_sync(
+    database: Database,
+    site_url: Optional[str],
+    site_id: Optional[int],
+    all_sites: bool
+) -> List[Dict[str, Any]]:
+    """根據輸入參數獲取要同步的站點列表"""
+    sites_to_sync: List[Dict[str, Any]] = []
+    all_db_sites = database.get_sites(active_only=True)
+
+    if all_sites:
+        sites_to_sync = all_db_sites
+    elif site_id:
+        site = next((s for s in all_db_sites if s['id'] == site_id), None)
+        if site:
+            sites_to_sync.append(site)
+    elif site_url:
+        site = next((s for s in all_db_sites if s['domain'] == site_url), None)
+        if not site:
+            logger.info(f"站點 {site_url} 不在數據庫中，嘗試自動添加...")
+            site_name = site_url.replace('sc-domain:', '').replace('https://', '').replace('http://', '').rstrip('/')
             try:
-                result = sync_month(site_id, year, month, use_new_cli)
-                results['details'].append({
-                    'site_id': site_id,
-                    'result': result
-                })
-                if result['fail'] == 0:
-                    results['successful_sites'] += 1
-                else:
-                    results['failed_sites'] += 1
+                new_site_id = database.add_site(domain=site_url, name=site_name)
+                all_db_sites = database.get_sites(active_only=True)
+                site = next((s for s in all_db_sites if s['id'] == new_site_id), None)
+                if site:
+                    logger.info(f"✅ 站點自動添加成功！ID: {new_site_id}")
             except Exception as e:
-                print(f"💥 站點 {site_id} 同步錯誤: {e}")
-                results['failed_sites'] += 1
-            results['total_sites'] += 1
-    
-    else:
-        raise ValueError("請提供有效的參數組合：sites+days 或 site_ids+year+month")
-    
-    print(f"\n🎉 同步完成！")
-    print(f"📊 總站點: {results['total_sites']}")
-    print(f"✅ 成功: {results['successful_sites']}")
-    print(f"❌ 失敗: {results['failed_sites']}")
-    
-    return results
+                logger.error(f"自動添加站點 {site_url} 失敗: {e}")
+                site = None
+        if site:
+            sites_to_sync.append(site)
 
-
-if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("使用方法: python bulk_data_synchronizer.py <site_id> <year> <month>")
-        print("例如: python bulk_data_synchronizer.py 3 2025 6")
-        print("\n或者使用新的 CLI 同步:")
-        print("python main.py sync --site-url 'https://example.com' --days 30")
-        sys.exit(1)
-
-    site_id = int(sys.argv[1])
-    year = int(sys.argv[2])
-    month = int(sys.argv[3])
-
-    sync_month(site_id, year, month)
+    if not sites_to_sync:
+        logger.error("❌ 未找到或指定任何要同步的站點")
+        raise typer.Exit(1)
+    return sites_to_sync

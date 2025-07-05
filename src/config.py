@@ -1,48 +1,83 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 """
-GSC CLI 配置管理模組
-集中管理所有路徑、設定和常量
+集中化配置管理模塊。
+支持多環境配置 (development, production)。
 """
 
-from pathlib import Path
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+from typing import Optional
 
-# 專案根目錄
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# 從 .env 文件加載環境變量 (如果存在)
+load_dotenv()
 
-# 目錄路徑
-DATA_DIR = PROJECT_ROOT / "data"
-CONFIG_DIR = PROJECT_ROOT / "config"
-REPORTS_DIR = PROJECT_ROOT / "reports"
-LOGS_DIR = PROJECT_ROOT / "logs"
-ASSETS_DIR = REPORTS_DIR / "assets"
+# --- 核心路徑 ---
+# 專案根目錄 (src 的上一層)
+BASE_DIR = Path(__file__).resolve().parents[1]
 
-# 確保目錄存在
-DATA_DIR.mkdir(exist_ok=True)
-CONFIG_DIR.mkdir(exist_ok=True)
-REPORTS_DIR.mkdir(exist_ok=True)
-LOGS_DIR.mkdir(exist_ok=True)
-ASSETS_DIR.mkdir(exist_ok=True)
+# --- 環境配置 ---
+# 獲取應用環境，默認為 'development'
+APP_ENV = os.getenv('APP_ENV', 'development')
 
-# 檔案路徑
-DB_PATH = DATA_DIR / "gsc_data.db"
-LOG_FILE_PATH = LOGS_DIR / "gsc_simple.log"
-APP_LOG_PATH = LOGS_DIR / "app.log"
-CREDENTIALS_PATH = CONFIG_DIR / "gsc_credentials.json"
-CLIENT_SECRET_PATH = CONFIG_DIR / "client_secret.json"
-
-# 默認設定
-DEFAULT_DAYS = 30
-DEFAULT_SITE_URL = None
-DEFAULT_OUTPUT_FORMAT = "markdown"
-
-# API 設定
+# --- GSC API 配置 ---
+# 修正：使其與 credentials.json 中已授權的範圍完全一致，以解決 invalid_scope 錯誤
 GSC_SCOPES = [
     'https://www.googleapis.com/auth/webmasters.readonly',
     'openid',
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile'
 ]
+
+# --- 根據環境設置路徑 ---
+if APP_ENV == 'production':
+    # 生產環境路徑 (例如，在 /var/data 中)
+    DATA_DIR = Path(os.getenv('GSC_DATA_DIR', '/var/data/gsc_db'))
+    LOGS_DIR = Path(os.getenv('GSC_LOGS_DIR', '/var/log/gsc_db'))
+else:
+    # 開發環境路徑 (在專案目錄內)
+    DATA_DIR = BASE_DIR / "data"
+    LOGS_DIR = BASE_DIR / "logs"
+
+# --- 確保核心目錄存在 ---
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+# --- 靜態路徑配置 ---
+CONFIG_DIR = BASE_DIR / "config"
+ASSETS_DIR = BASE_DIR / "assets"
+REPORTS_DIR = BASE_DIR / "reports"
+
+DB_PATH = DATA_DIR / "gsc_data.db"
+CLIENT_SECRET_PATH = CONFIG_DIR / "client_secret.json"
+CREDENTIALS_PATH = CONFIG_DIR / "credentials.json"
+
+# --- 動態路徑函數 (保持向後兼容) ---
+def get_db_path() -> Path:
+    """返回數據庫文件的完整路徑。"""
+    return Path(os.getenv('GSC_DB_PATH', DB_PATH))
+
+def get_credentials_path() -> Path:
+    """返回存儲憑證文件的路徑。"""
+    return Path(os.getenv('GSC_CREDENTIALS_PATH', CREDENTIALS_PATH))
+
+# 默認設定
+DEFAULT_DAYS = 7
+DEFAULT_SITEMAP_URL = None
+DEFAULT_REPORTS_DIR = REPORTS_DIR
+
+# API 相關
+GSC_API_VERSION = 'v1'
+GSC_DISCOVERY_URL = 'https://www.googleapis.com/discovery/v1/apis/webmasters/v3/rest'
+
+# 系統健康檢查相關
+HEALTH_CHECK_URLS = [
+    "https://www.google.com",
+    "https://analytics.google.com",
+]
+HEALTH_CHECK_TIMEOUT = 10
 
 # 日誌設定
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -68,52 +103,3 @@ REPORT_TEMPLATES = {
 
 # 每小時分析設定
 HOURLY_ANALYSIS_TYPES = ['trends', 'heatmap', 'peaks', 'report', 'all']
-
-# 環境變量
-def get_env_var(key: str, default: str = None) -> str:
-    """獲取環境變量，如果不存在則返回默認值"""
-    return os.getenv(key, default)
-
-# 動態配置
-def get_db_path() -> Path:
-    """獲取數據庫路徑，支持環境變量覆蓋"""
-    env_db_path = get_env_var('GSC_DB_PATH')
-    if env_db_path:
-        return Path(env_db_path)
-    return DB_PATH
-
-def get_log_path() -> Path:
-    """獲取日誌路徑，支持環境變量覆蓋"""
-    env_log_path = get_env_var('GSC_LOG_PATH')
-    if env_log_path:
-        return Path(env_log_path)
-    return LOG_FILE_PATH
-
-def get_credentials_path() -> Path:
-    """獲取憑證路徑，支持環境變量覆蓋"""
-    env_creds_path = get_env_var('GSC_CREDENTIALS_PATH')
-    if env_creds_path:
-        return Path(env_creds_path)
-    return CREDENTIALS_PATH
-
-# 驗證配置
-def validate_config() -> bool:
-    """驗證配置是否正確"""
-    try:
-        # 檢查必要目錄
-        for dir_path in [DATA_DIR, CONFIG_DIR, REPORTS_DIR, LOGS_DIR]:
-            if not dir_path.exists():
-                dir_path.mkdir(parents=True, exist_ok=True)
-        
-        # 檢查數據庫目錄
-        if not DATA_DIR.exists():
-            DATA_DIR.mkdir(parents=True, exist_ok=True)
-        
-        return True
-    except Exception as e:
-        print(f"配置驗證失敗: {e}")
-        return False
-
-# 初始化時驗證配置
-if __name__ == "__main__":
-    validate_config() 

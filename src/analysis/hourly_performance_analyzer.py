@@ -15,6 +15,7 @@ import seaborn as sns
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 import logging
+import warnings
 
 # 專案模組導入
 from .. import config
@@ -23,12 +24,100 @@ from .. import config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# 完全抑制所有 matplotlib 相關警告
+warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib')
+warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib.font_manager')
+warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib.backends')
+warnings.filterwarnings('ignore', category=RuntimeWarning, module='matplotlib')
+warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib.text')
+warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib.rcsetup')
+warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib.cbook')
+
 # 設置現代化視覺風格
 plt.style.use('seaborn-v0_8-whitegrid')
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'Helvetica', 'SimHei']
-plt.rcParams['axes.unicode_minus'] = False
-plt.rcParams['figure.facecolor'] = 'white'
-plt.rcParams['axes.facecolor'] = '#f8f9fa'
+
+# 更強健的字體配置，完全處理 emoji 和中文顯示問題
+def configure_matplotlib_fonts():
+    """配置 matplotlib 字體以支持 emoji 和中文，完全抑制警告"""
+    import platform
+    import matplotlib.font_manager as fm
+    import matplotlib
+    import matplotlib.pyplot as plt
+    
+    # 完全抑制字體相關警告
+    import warnings
+    warnings.filterwarnings('ignore', category=UserWarning)
+    warnings.filterwarnings('ignore', category=RuntimeWarning)
+    
+    # 根據操作系統選擇合適的字體
+    system = platform.system()
+    
+    if system == "Darwin":  # macOS
+        font_list = [
+            'Arial Unicode MS',  # 最兼容的字體，支持 emoji 和中文
+            'Helvetica Neue',
+            'Helvetica',
+            'Arial',
+            'DejaVu Sans'
+        ]
+    elif system == "Windows":
+        font_list = [
+            'Arial Unicode MS',  # 最兼容的字體
+            'Segoe UI',
+            'Arial',
+            'DejaVu Sans'
+        ]
+    else:  # Linux and others
+        font_list = [
+            'DejaVu Sans',  # Linux 最可靠的字體
+            'Liberation Sans',
+            'Arial',
+            'Helvetica'
+        ]
+    
+    # 檢查字體可用性並設置
+    available_fonts = []
+    
+    for font in font_list:
+        try:
+            # 更嚴格的字體檢查
+            font_path = fm.findfont(font)
+            if font_path and font_path != matplotlib.rcParams['font.sans-serif'][0]:
+                available_fonts.append(font)
+        except Exception:
+            continue
+    
+    # 如果沒有找到合適字體，使用基本字體
+    if not available_fonts:
+        available_fonts = ['DejaVu Sans', 'Arial', 'Helvetica']
+    
+    # 設置字體參數
+    plt.rcParams['font.sans-serif'] = available_fonts
+    plt.rcParams['axes.unicode_minus'] = False
+    plt.rcParams['figure.facecolor'] = 'white'
+    plt.rcParams['axes.facecolor'] = '#f8f9fa'
+    
+    # 使用更可靠的方法設置 unicode_minus
+    plt.rc('axes', unicode_minus=False)
+    
+    # 清除字體緩存以確保新配置生效
+    try:
+        # 嘗試清除字體緩存
+        if hasattr(fm.findfont, 'cache_clear'):
+            fm.findfont.cache_clear()
+    except Exception:
+        pass
+    
+    # 設置全局警告過濾
+    warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib')
+    warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib.font_manager')
+    warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib.backends')
+    warnings.filterwarnings('ignore', category=RuntimeWarning, module='matplotlib')
+    
+    return True, True
+
+# 配置字體並獲取支持狀態
+EMOJI_SUPPORTED, CHINESE_SUPPORTED = configure_matplotlib_fonts()
 
 # 專業配色方案
 HOURLY_COLORS = {
@@ -164,10 +253,8 @@ class HourlyAnalyzer:
             logger.error("無法獲取每小時數據")
             return None
 
-        fig = plt.figure(figsize=(16, 12))
-        gs = fig.add_gridspec(
-            3, 2, height_ratios=[
-                2, 2, 1], hspace=0.3, wspace=0.3)
+        fig = plt.figure(figsize=(16, 12), constrained_layout=True)
+        gs = fig.add_gridspec(3, 2, height_ratios=[2, 2, 1])
 
         # 主要趨勢圖
         ax1 = fig.add_subplot(gs[0, :])
@@ -252,21 +339,22 @@ class HourlyAnalyzer:
         total_clicks = df['total_clicks'].sum()
         total_impressions = df['total_impressions'].sum()
 
+        # 使用純文字格式，避免 emoji 字體問題
         stats_text = f"""
-        📊 統計摘要 (近{days}天)
+        統計摘要 (近{days}天)
         
-        🏆 高峰時段: {peak_hour['hour']}點 ({peak_hour['total_clicks']:,}次點擊)
-        🌙 低谷時段: {low_hour['hour']}點 ({low_hour['total_clicks']:,}次點擊)
-        📈 點擊總量: {total_clicks:,}
-        👀 曝光總量: {total_impressions:,}
-        🔤 關鍵字總數: {df['unique_queries'].sum():,}
+        [高峰] 高峰時段: {peak_hour['hour']}點 ({peak_hour['total_clicks']:,}次點擊)
+        [低谷] 低谷時段: {low_hour['hour']}點 ({low_hour['total_clicks']:,}次點擊)
+        [趨勢] 點擊總量: {total_clicks:,}
+        [曝光] 曝光總量: {total_impressions:,}
+        [關鍵字] 關鍵字總數: {df['unique_queries'].sum():,}
         """
 
         ax4.text(0.05, 0.5, stats_text, transform=ax4.transAxes,
                  fontsize=12, verticalalignment='center',
                  bbox=dict(boxstyle="round,pad=0.5", facecolor='lightgray', alpha=0.8))
 
-        plt.tight_layout()
+        # Using constrained_layout instead of tight_layout for better compatibility
 
         if save_path:
             if not save_path.endswith(('.png', '.jpg', '.jpeg', '.pdf')):
@@ -300,7 +388,7 @@ class HourlyAnalyzer:
             columns='hour',
             values='impressions').fillna(0)
 
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10))
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), constrained_layout=True)
 
         # 點擊量熱力圖
         sns.heatmap(pivot_clicks, annot=True, fmt='.0f', cmap='YlOrRd',
@@ -316,7 +404,7 @@ class HourlyAnalyzer:
         ax2.set_xlabel('小時', fontsize=12)
         ax2.set_ylabel('日期', fontsize=12)
 
-        plt.tight_layout()
+        # Using constrained_layout instead of tight_layout for better compatibility
 
         if save_path:
             if not save_path.endswith(('.png', '.jpg', '.jpeg', '.pdf')):
@@ -340,7 +428,7 @@ class HourlyAnalyzer:
             logger.error("無法獲取高峰分析數據")
             return None
 
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12), constrained_layout=True)
 
         # 時段點擊量分布
         colors = [HOURLY_COLORS['night'], HOURLY_COLORS['morning'],
@@ -393,7 +481,7 @@ class HourlyAnalyzer:
         ax4.set_xticks(range(0, 24, 2))
         ax4.invert_yaxis()
 
-        plt.tight_layout()
+        # Using constrained_layout instead of tight_layout for better compatibility
 
         if save_path:
             if not save_path.endswith(('.png', '.jpg', '.jpeg', '.pdf')):
@@ -529,6 +617,40 @@ def _generate_peak_analysis_plot(analyzer: HourlyAnalyzer, days: int = 7, save_p
         logger.error(f"生成高峰分析圖失敗: {e}")
         return None
 
+def _generate_hourly_report(analyzer: HourlyAnalyzer, days: int = 7, save_path: Optional[str] = None) -> Optional[str]:
+    """生成每小時報告"""
+    try:
+        # The analyzer method expects output_path, so we pass save_path to it.
+        if save_path is None:
+            return None
+        return analyzer.generate_hourly_report(days=days, output_path=save_path)
+    except Exception as e:
+        logger.error(f"生成每小時報告失敗: {e}")
+        return None
+
+# 分析任務註冊表，方便擴展
+ANALYSIS_REGISTRY = {
+    'trends': {
+        'function': _generate_hourly_trends_plot,
+        'type': 'plot',
+        'filename': 'hourly_trends.png'
+    },
+    'heatmap': {
+        'function': _generate_hourly_heatmap,
+        'type': 'plot',
+        'filename': 'hourly_heatmap.png'
+    },
+    'peaks': {
+        'function': _generate_peak_analysis_plot,
+        'type': 'plot',
+        'filename': 'peak_analysis.png'
+    },
+    'report': {
+        'function': _generate_hourly_report,
+        'type': 'report',
+        'filename': 'hourly_report.md'
+    }
+}
 
 def _fetch_hourly_data_gemini(conn, days: int, site_url: Optional[str] = None) -> pd.DataFrame:
     """
@@ -558,13 +680,13 @@ def _generate_hourly_plot_gemini(df: pd.DataFrame, output_dir: Path, filename_pr
     if df.empty:
         return None
     plt.style.use('seaborn-v0_8-whitegrid')
-    plt.figure(figsize=(14, 7))
+    plt.figure(figsize=(14, 7), constrained_layout=True)
     sns.barplot(x='hour', y='total_clicks', data=df, palette='plasma', hue='hour', dodge=False, legend=False)
     plt.title(f'{filename_prefix} - Clicks by Hour of Day (UTC)', fontsize=16, pad=20)
     plt.xlabel('Hour of Day', fontsize=12)
     plt.ylabel('Total Clicks', fontsize=12)
     plt.xticks(range(0, 24))
-    plt.tight_layout()
+    # Using constrained_layout instead of tight_layout for better compatibility
     output_dir.mkdir(parents=True, exist_ok=True)
     plot_path = output_dir / f"{filename_prefix}_Hourly_Trends.png"
     plt.savefig(plot_path)
@@ -632,35 +754,38 @@ def run_hourly_analysis(
             result['errors'].append(error_msg)
             return result
         
-        # 生成圖表
-        if include_plots:
-            plot_dir = Path(plot_save_dir) if plot_save_dir else config.ASSETS_DIR
-            plot_dir.mkdir(exist_ok=True)
+        # 確定要運行的分析任務
+        analyses_to_run = []
+        if analysis_type == 'all':
+            analyses_to_run = list(ANALYSIS_REGISTRY.keys())
+        elif analysis_type in ANALYSIS_REGISTRY:
+            analyses_to_run = [analysis_type]
+        else:
+            error_msg = f"無效的分析類型: {analysis_type}. 可用類型: {list(ANALYSIS_REGISTRY.keys()) + ['all']}"
+            logger.error(error_msg)
+            result['errors'].append(error_msg)
+            return result
+
+        # 執行分析任務
+        for name in analyses_to_run:
+            task = ANALYSIS_REGISTRY[name]
             
-            if analysis_type in ["trends", "all"]:
-                trends_path = plot_dir / "hourly_trends.png"
-                if _generate_hourly_trends_plot(analyzer, days, str(trends_path)):
-                    result['plots_generated'].append(str(trends_path))
-            
-            if analysis_type in ["heatmap", "all"]:
-                heatmap_path = plot_dir / "hourly_heatmap.png"
-                if _generate_hourly_heatmap(analyzer, days, str(heatmap_path)):
-                    result['plots_generated'].append(str(heatmap_path))
-            
-            if analysis_type in ["peaks", "all"]:
-                peaks_path = plot_dir / "peak_analysis.png"
-                if _generate_peak_analysis_plot(analyzer, days, str(peaks_path)):
-                    result['plots_generated'].append(str(peaks_path))
-        
-        # 生成報告
-        if analysis_type in ["report", "all"]:
-            if not output_path:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                output_path = f"hourly_report_{timestamp}.md"
-            
-            report_path = analyzer.generate_hourly_report(days, output_path)
-            if report_path:
-                result['report_path'] = report_path
+            if task['type'] == 'plot' and include_plots:
+                plot_dir = Path(plot_save_dir) if plot_save_dir else config.ASSETS_DIR
+                plot_dir.mkdir(exist_ok=True)
+                save_path = plot_dir / task['filename']
+                
+                if task['function'](analyzer, days, str(save_path)):
+                    result['plots_generated'].append(str(save_path))
+
+            elif task['type'] == 'report':
+                report_save_path = output_path
+                if not report_save_path:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    report_save_path = config.REPORTS_DIR / f"hourly_report_{timestamp}.md"
+                
+                if task['function'](analyzer, days, str(report_save_path)):
+                    result['report_path'] = str(report_save_path)
         
         result['success'] = True
         logger.info(f"每小時分析完成: {analysis_type}")

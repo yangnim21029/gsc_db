@@ -2,947 +2,386 @@
 # -*- coding: utf-8 -*-
 
 """
-GSC CLI 命令定義
-使用 Typer 構建的現代化命令行工具
+GSC CLI 命令定義 - 已重構
+
+- 將複雜邏輯委託給後端服務和作業 (jobs)。
+- 修復了所有不匹配的方法調用。
+- 統一了依賴注入模式。
 """
-
-import logging
-from datetime import datetime, timedelta
-from typing import Optional, List
-from typing_extensions import Annotated
-
 import typer
+from typing import Optional, List, Dict, Any
+from typing_extensions import Annotated
+from datetime import datetime, timedelta
 from rich.console import Console
 from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.panel import Panel
 
-# 專案模組導入
-from .. import config
+from .dependencies import get_db_service, get_gsc_client, get_analysis_service
+from ..services.database import Database, SyncMode
 from ..services.gsc_client import GSCClient
-from ..services.database import Database
+from ..services.analysis_service import AnalysisService
 from ..jobs.bulk_data_synchronizer import run_sync
 from ..analysis.analytics_report_builder import build_report
-from ..analysis.hourly_performance_analyzer import run_hourly_analysis
+from ..analysis.interactive_data_visualizer import InteractiveVisualizer
 
-# 設置日誌
-logging.basicConfig(
-    level=logging.INFO,
-    format=config.LOG_FORMAT,
-    handlers=[
-        logging.FileHandler(config.LOG_FILE_PATH),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# 初始化 Typer 應用
-app = typer.Typer(
-    name="gsc-cli",
-    help="🚀 GSC CLI - Google Search Console 數據管理工具",
-    add_completion=False,
-    rich_markup_mode="rich"
-)
-
-# 初始化 Rich 控制台
 console = Console()
+app = typer.Typer(help="GSC CLI - 企業級 Google Search Console 數據管理工具")
+site_app = typer.Typer(help="管理 GSC 網站屬性")
+sync_app = typer.Typer(name="sync", help="數據同步相關命令")
+analyze_app = typer.Typer(name="analyze", help="數據分析相關命令")
+auth_app = typer.Typer(name="auth", help="認證管理相關命令")
 
+# 移除這幾行，我們將在 main.py 中進行註冊
+# site_app.add_typer(sync_app)
+# site_app.add_typer(analyze_app)
 
-@app.command()
-def auth():
+@auth_app.command("login")
+def auth_login(ctx: typer.Context):
     """
-    🔐 進行 Google Search Console API 認證
+    執行一次性的 OAuth 認證流程以獲取憑證。
     """
-    gsc_client = GSCClient()
+    console.print("🚀 [bold yellow]啟動 OAuth2 認證流程...[/bold yellow]")
+    gsc_client = ctx.obj.gsc_client()
+    
+    auth_url = gsc_client.get_auth_url()
+    
+    console.print("\n1. 請將以下 URL 複製到您的瀏覽器中打開，並登入您的 Google 帳戶進行授權：")
+    console.print(f"\n[link={auth_url}]{auth_url}[/link]\n")
+    
+    console.print("2. 授權後，您將被重定向到一個無法打開的頁面 (這是正常的)。請從該頁面的瀏覽器地址欄中，複製 `code=` 後面的所有內容。")
+    
+    auth_code = typer.prompt("3. 請在此處貼上您複製的授權碼 (code)")
+    
+    if not auth_code:
+        console.print("[bold red]❌ 未提供授權碼，認證已取消。[/bold red]")
+        raise typer.Exit(code=1)
+        
+    console.print("\n⏳ [cyan]正在使用授權碼換取憑證...[/cyan]")
+    if gsc_client.handle_oauth_callback(auth_code.strip()):
+        console.print("[bold green]✅ 認證成功！憑證已保存至 token.json。您現在可以運行非互動式腳本了。[/bold green]")
+    else:
+        console.print("[bold red]❌ 認證失敗。請檢查您的授權碼或配置。[/bold red]")
+        raise typer.Exit(code=1)
 
-    if gsc_client.is_authenticated():
-        typer.secho("✅ 已經認證成功", fg=typer.colors.GREEN)
+@site_app.command("list")
+def list_sites(ctx: typer.Context):
+    """列出所有本地數據庫和遠程 GSC 帳戶中的站點。"""
+    db = ctx.obj.db_service()
+    gsc_client = ctx.obj.gsc_client()
+    console.print("[bold cyan]--- 遠程 GSC 帳戶站點 ---[/bold cyan]")
+    try:
+        gsc_sites = gsc_client.get_sites()
+        if not gsc_sites:
+            console.print("[yellow]在您的 GSC 帳戶中找不到任何站點。[/yellow]")
+        else:
+            remote_table = Table(title="GSC 遠程站點")
+            remote_table.add_column("站點 URL", style="green")
+            for site in gsc_sites:
+                remote_table.add_row(site)
+            console.print(remote_table)
+    except Exception as e:
+        console.print(f"[red]❌ 無法從 Google API 獲取站點列表: {e}[/red]")
+
+    console.print("\n[bold cyan]--- 本地數據庫站點 ---[/bold cyan]")
+    db_sites = db.get_sites(active_only=False)
+    if not db_sites:
+        console.print("[yellow]數據庫中沒有任何站點。[/yellow]")
+    else:
+        local_table = Table(title="本地數據庫站點")
+        local_table.add_column("ID", style="cyan")
+        local_table.add_column("名稱", style="magenta")
+        local_table.add_column("網域", style="green")
+        local_table.add_column("狀態", style="yellow")
+        for site in db_sites:
+            status = "有效" if site['is_active'] else "無效"
+            local_table.add_row(str(site['id']), site['name'], site['domain'], status)
+        console.print(local_table)
+
+@site_app.command("add")
+def add_site(ctx: typer.Context,
+    site_url: Annotated[str, typer.Argument(help="要添加的 GSC 網站 URL。")],
+):
+    """手動添加一個 GSC 站點到數據庫。"""
+    db = ctx.obj.db_service()
+    site_name = site_url.replace("sc-domain:", "").replace("https://", "").replace("http://", "").rstrip('/')
+    try:
+        site_id = db.add_site(domain=site_url, name=site_name)
+        console.print(f"[green]✅ 站點 '{site_name}' 添加成功，ID: {site_id}[/green]")
+    except Exception as e:
+        console.print(f"[red]❌ 添加站點失敗: {e}[/red]")
+
+@site_app.command("cleanup-duplicates", help="清理因 bug 產生的重複站點名稱。")
+def cleanup_duplicate_sites(
+    ctx: typer.Context,
+):
+    """
+    清理數據庫中 'sc-domain:sc-domain:...' 形式的重複站點。
+    """
+    db: Database = ctx.obj.db_service()
+    console.print("[yellow]正在開始清理重複站點...[/yellow]")
+    cleaned_count = db.cleanup_duplicate_domains()
+    console.print(f"[green]✅ 清理完成！共更新了 {cleaned_count} 個站點。[/green]")
+
+
+@site_app.command("deactivate-prefixes", help="停用已存在對應 sc-domain 版本的網址前置字元站點。")
+def deactivate_prefix_sites(
+    ctx: typer.Context,
+    dry_run: bool = typer.Option(False, "--dry-run", help="只顯示將被停用的站點，不執行任何操作。")
+):
+    """
+    將所有已存在對應 sc-domain 版本的網址前置字元站點設置為 is_active = False。
+    這有助於清理數據庫，避免同步多餘的資源。
+    """
+    db: Database = ctx.obj.db_service()
+    console.print("[yellow]🔍 正在查找已存在對應 sc-domain 的前綴站點...[/yellow]")
+
+    result = db.deactivate_prefix_sites(dry_run=True)
+    
+    # 進行類型檢查和斷言，以解決 linter 錯誤
+    import typing
+    if not isinstance(result, list):
+        console.print(f"[bold red]錯誤：預期從數據庫獲取列表，但得到了意外的類型: {type(result)}[/bold red]")
+        raise typer.Exit(1)
+    
+    sites_to_deactivate: typing.List[typing.Dict[str, typing.Any]] = result
+
+    if not sites_to_deactivate:
+        console.print("[green]✅ 沒有找到任何需要停用的網址前置字元站點。[/green]")
         return
 
-    auth_url = gsc_client.get_auth_url()
-    typer.echo("🔗 請訪問以下 URL 進行認證：")
-    typer.echo(auth_url)
-    typer.echo("\n認證完成後，請重新運行此命令檢查狀態")
+    table = Table(title="將被停用的站點")
+    table.add_column("ID", style="cyan")
+    table.add_column("Domain", style="magenta")
+    for site in sites_to_deactivate:
+        table.add_row(str(site['id']), site['domain'])
+    console.print(table)
+
+    if dry_run:
+        console.print("\n[bold yellow]--dry-run 模式，未執行任何操作。[/bold yellow]")
+        return
+
+    if typer.confirm("\n你確定要停用以上所有站點嗎？"):
+        deactivated_count = db.deactivate_prefix_sites(dry_run=False)
+        console.print(f"\n[bold green]✅ 成功停用了 {deactivated_count} 個站點。[/bold green]")
+    else:
+        console.print("[bold red]操作已取消。[/bold red]")
 
 
-@app.command()
-def sites():
-    """
-    📊 列出所有可用的站點
-    """
-    try:
-        gsc_client = GSCClient()
+@sync_app.command("daily")
+def sync_daily(ctx: typer.Context,
+    site_url: Annotated[Optional[str], typer.Option("--site-url")] = None,
+    site_id: Annotated[Optional[int], typer.Option("--site-id")] = None,
+    all_sites: Annotated[bool, typer.Option("--all-sites")] = False,
+    start_date: Annotated[Optional[str], typer.Option("--start-date")] = None,
+    end_date: Annotated[Optional[str], typer.Option("--end-date")] = None,
+    days: Annotated[int, typer.Option("--days")] = 7,
+    retries: Annotated[int, typer.Option()] = 3,
+    retry_delay: Annotated[int, typer.Option()] = 5,
+    sync_mode: Annotated[SyncMode, typer.Option()] = SyncMode.SKIP,
+    resume: Annotated[bool, typer.Option("--resume")] = False,
+):
+    """從 GSC 同步每日數據到本地數據庫。"""
+    db = ctx.obj.db_service()
+    client = ctx.obj.gsc_client()
+    run_sync(
+        db=db,
+        client=client,
+        site_url=site_url,
+        site_id=site_id,
+        all_sites=all_sites,
+        start_date=start_date,
+        end_date=end_date,
+        days=days,
+        retries=retries,
+        retry_delay=retry_delay,
+        sync_mode=sync_mode,
+        resume=resume,
+    )
 
-        # 從 GSC 獲取站點
-        gsc_sites = gsc_client.get_sites()
-        
-        table = Table(title="🌐 GSC 中的站點")
-        table.add_column("序號", style="cyan")
-        table.add_column("站點 URL", style="green")
-        
-        for i, site in enumerate(gsc_sites, 1):
-            table.add_row(str(i), site)
-        
-        console.print(table)
+@analyze_app.command("report")
+def analyze_report(ctx: typer.Context,
+    site_id: Annotated[int, typer.Option(help="要生成報告的網站 ID。")],
+    output_path: Annotated[str, typer.Option()] = "gsc_report.md",
+    days: Annotated[int, typer.Option()] = 30,
+    no_plots: Annotated[bool, typer.Option("--no-plots")] = False,
+    plot_dir: Annotated[Optional[str], typer.Option()] = None,
+):
+    """生成 GSC 數據分析報告。"""
+    analysis_service = ctx.obj.analysis_service()
+    console.print(f"🚀 開始為站點 ID {site_id} 生成報告...")
+    result = build_report(
+        analysis_service=analysis_service,
+        site_id=site_id,
+        output_path=output_path,
+        days=days,
+        include_plots=not no_plots,
+        plot_save_dir=plot_dir
+    )
+    if result.get("success"):
+        console.print(f"[green]✅ 報告已成功生成於: {result.get('output_path')}[/green]")
+    else:
+        errors = result.get('errors', ['未知錯誤'])
+        console.print(f"[red]❌ 報告生成失敗: {', '.join(map(str, errors))}[/red]")
 
-        # 從數據庫獲取站點
-        database = Database()
-        db_sites = database.get_sites()
-        
-        table = Table(title="💾 數據庫中的站點")
-        table.add_column("ID", style="cyan")
-        table.add_column("名稱", style="green")
-        table.add_column("域名", style="yellow")
-        
-        for site in db_sites:
-            table.add_row(str(site['id']), site['name'], site['domain'])
-        
-        console.print(table)
-
-    except Exception as e:
-        typer.secho(f"❌ 獲取站點失敗：{e}", fg=typer.colors.RED)
+@analyze_app.command("interactive")
+def analyze_interactive(ctx: typer.Context,
+    site_id: Annotated[Optional[int], typer.Option("--site-id", help="要進行可視化分析的網站 ID。如果未提供，將會提示選擇。")] = None,
+    days: Annotated[int, typer.Option("--days", help="要分析的過去天數。")] = 30,
+):
+    """🎨 啟動交互式數據可視化儀表板。"""
+    analysis_service = ctx.obj.analysis_service()
+    console.print("🎨 啟動交互式可視化...", style="cyan")
+    visualizer = InteractiveVisualizer(analysis_service)
+    visualizer.run(site_id=site_id, days=days)
 
 
-@app.command()
-def add_site(
-    site_url: Annotated[
-        str, typer.Argument(help="站點 URL (例如: https://example.com/ 或 sc-domain:example.com)")
-    ]
+def _calculate_coverage_percentage(coverage_data: Dict[str, Any]) -> Optional[str]:
+    """計算並格式化數據覆蓋率百分比"""
+    first_date_str = coverage_data.get('first_date')
+    last_date_str = coverage_data.get('last_date')
+    unique_dates = coverage_data.get('unique_dates', 0)
+
+    if first_date_str and last_date_str and unique_dates > 0:
+        try:
+            first_date = datetime.strptime(first_date_str, '%Y-%m-%d').date()
+            last_date = datetime.strptime(last_date_str, '%Y-%m-%d').date()
+            total_days = (last_date - first_date).days + 1
+            percentage = (unique_dates / total_days) * 100 if total_days > 0 else 0
+            return f"{percentage:.1f}% ({unique_dates} / {total_days} 天)"
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def _print_coverage_for_site(db: Database, site: Dict[str, Any]):
+    """為單一站點打印數據覆蓋率報告的輔助函數。"""
+    site_id = site['id']
+    console.print(Panel(f"[bold cyan]數據覆蓋率報告: {site['name']} (ID: {site_id})[/bold cyan]", expand=False))
+
+    # --- 每日數據覆蓋率 ---
+    console.print("\n[bold green]📊 每日數據 (Daily Data)[/bold green]")
+    daily_coverage = db.get_daily_data_coverage(site_id)
+    daily_table = Table(show_header=False, box=None)
+    daily_table.add_column(style="magenta")
+    daily_table.add_column(style="white")
+    total_records_daily = daily_coverage.get('total_records')
+    if total_records_daily and total_records_daily > 0:
+        daily_table.add_row("總記錄數:", f"{total_records_daily:,}")
+        daily_table.add_row("首個數據日期:", str(daily_coverage.get('first_date')))
+        daily_table.add_row("最後數據日期:", str(daily_coverage.get('last_date')))
+        daily_table.add_row("數據覆蓋天數:", str(daily_coverage.get('unique_dates')))
+        coverage_str = _calculate_coverage_percentage(daily_coverage)
+        if coverage_str:
+            daily_table.add_row("時間覆蓋率:", f"[bold cyan]{coverage_str}[/bold cyan]")
+    else:
+        daily_table.add_row("狀態:", "[yellow]無每日數據[/yellow]")
+    console.print(daily_table)
+
+    # --- 每小時數據覆蓋率 ---
+    console.print("\n[bold green]🕒 每小時數據 (Hourly Data)[/bold green]")
+    hourly_coverage = db.get_hourly_data_coverage(site_id)
+    
+    hourly_table = Table(show_header=False, box=None)
+    hourly_table.add_column(style="magenta")
+    hourly_table.add_column(style="white")
+    total_records_hourly = hourly_coverage.get('total_records')
+    if total_records_hourly and total_records_hourly > 0:
+        hourly_table.add_row("總記錄數:", f"{total_records_hourly:,}")
+        hourly_table.add_row("首個數據日期:", str(hourly_coverage.get('first_date')))
+        hourly_table.add_row("最後數據日期:", str(hourly_coverage.get('last_date')))
+        hourly_table.add_row("數據覆蓋天數:", str(hourly_coverage.get('unique_dates')))
+        coverage_str = _calculate_coverage_percentage(hourly_coverage)
+        if coverage_str:
+            hourly_table.add_row("時間覆蓋率:", f"[bold cyan]{coverage_str}[/bold cyan]")
+    else:
+        hourly_table.add_row("狀態:", "[yellow]無每小時數據[/yellow]")
+    console.print(hourly_table)
+
+
+@analyze_app.command("coverage")
+def analyze_coverage(
+    ctx: typer.Context,
+    site_id: Annotated[Optional[int], typer.Argument(help="要檢查數據覆蓋率的站點 ID。")] = None,
+    all_sites: Annotated[bool, typer.Option("--all", "-a", help="檢查所有站點的數據覆蓋率。")] = False,
 ):
     """
-    ➕ 添加新站點到數據庫
+    檢查指定站點在數據庫中的數據覆蓋情況。
+    可指定單一站點 ID，或使用 --all 檢查所有站點。
     """
-    try:
-        if not site_url:
-            site_url = typer.prompt("請輸入站點 URL")
-            
-        if not site_url:
-            typer.secho("❌ 必須提供站點 URL", fg=typer.colors.RED)
-            raise typer.Exit(1)
+    container = ctx.obj
+    db = container.db_service()
 
-        database = Database()
-        site_name = site_url.replace('sc-domain:', '').replace('https://', '').replace('http://', '').rstrip('/')
-        
-        site_id = database.add_site(site_name, site_url)
-        typer.secho(f"✅ 站點添加成功！ID: {site_id}", fg=typer.colors.GREEN)
-        
-    except Exception as e:
-        typer.secho(f"❌ 添加站點失敗：{e}", fg=typer.colors.RED)
-        raise typer.Exit(1)
+    if not site_id and not all_sites:
+        console.print("[bold red]❌ 錯誤：必須提供一個站點 ID 或使用 `--all` 選項。[/bold red]")
+        raise typer.Exit(code=1)
+
+    if site_id and all_sites:
+        console.print("[bold yellow]⚠️ 警告：同時提供了站點 ID 和 `--all` 選項，將優先處理所有站點。[/bold yellow]")
+        site_id = None
+
+    sites_to_process = []
+    if all_sites:
+        sites_to_process = db.get_sites(active_only=False)
+        if not sites_to_process:
+            console.print("[yellow]數據庫中沒有任何站點。[/yellow]")
+            return
+    elif site_id:
+        site = db.get_site_by_id(site_id)
+        if not site:
+            console.print(f"[bold red]❌ 錯誤：在數據庫中找不到 ID 為 {site_id} 的站點。[/bold red]")
+            raise typer.Exit(code=1)
+        sites_to_process.append(site)
+    
+    for i, site in enumerate(sites_to_process):
+        if i > 0:
+            console.print("\n" + "─" * 60 + "\n")
+        _print_coverage_for_site(db, site)
 
 
-@app.command()
-def coverage(
-    site_id: Annotated[
-        Optional[int], typer.Option("--site-id", help="站點 ID")
-    ] = None
+@analyze_app.command("compare")
+def compare_performance(ctx: typer.Context,
+    site_id: Annotated[int, typer.Argument(help="要比較的站點 ID。")],
+    period1_start: Annotated[str, typer.Argument(help="第一時段開始日期 (YYYY-MM-DD)。")],
+    period1_end: Annotated[str, typer.Argument(help="第一時段結束日期 (YYYY-MM-DD)。")],
+    period2_start: Annotated[str, typer.Argument(help="第二時段開始日期 (YYYY-MM-DD)。")],
+    period2_end: Annotated[str, typer.Argument(help="第二時段結束日期 (YYYY-MM-DD)。")],
+    group_by: Annotated[str, typer.Option(help="分組依據 ('query' 或 'page')")] = "query",
+    limit: Annotated[int, typer.Option()] = 10,
 ):
-    """
-    📈 顯示數據覆蓋情況
-    """
-    try:
-        database = Database()
-        
-        if site_id:
-            # 顯示特定站點的覆蓋情況
-            coverage_data = database.get_coverage_by_site(site_id)
-            if coverage_data:
-                table = Table(title=f"📊 站點 ID {site_id} 的數據覆蓋情況")
-                table.add_column("日期", style="cyan")
-                table.add_column("點擊數", style="green")
-                table.add_column("展示數", style="yellow")
-                table.add_column("CTR", style="blue")
-                table.add_column("平均排名", style="magenta")
-                
-                for row in coverage_data:
-                    table.add_row(
-                        str(row['date']),
-                        str(row['clicks']),
-                        str(row['impressions']),
-                        f"{row['ctr']:.2%}",
-                        f"{row['avg_position']:.1f}"
-                    )
-                console.print(table)
-            else:
-                typer.secho(f"❌ 未找到站點 ID {site_id} 的數據", fg=typer.colors.YELLOW)
-        else:
-            # 顯示所有站點的覆蓋情況
-            sites = database.get_sites()
-            table = Table(title="📊 所有站點數據覆蓋情況")
-            table.add_column("站點", style="cyan")
-            table.add_column("數據天數", style="green")
-            table.add_column("最新日期", style="yellow")
-            table.add_column("最早日期", style="blue")
-            
-            for site in sites:
-                coverage_info = database.get_coverage_summary(site['id'])
-                if coverage_info:
-                    table.add_row(
-                        site['name'],
-                        str(coverage_info['days']),
-                        str(coverage_info['latest_date']),
-                        str(coverage_info['earliest_date'])
-                    )
-                else:
-                    table.add_row(site['name'], "0", "無", "無")
-            
-            console.print(table)
-            
-    except Exception as e:
-        typer.secho(f"❌ 獲取覆蓋情況失敗：{e}", fg=typer.colors.RED)
+    """比較兩個時間段的性能數據。"""
+    analysis_service = ctx.obj.analysis_service()
+    data = analysis_service.compare_performance_periods(
+        site_id=site_id,
+        period1_start=period1_start,
+        period1_end=period1_end,
+        period2_start=period2_start,
+        period2_end=period2_end,
+        group_by=group_by,
+        limit=limit,
+    )
 
+    if not data:
+        console.print("[yellow]沒有找到可用於比較的數據。[/yellow]")
+        return
 
-@app.command()
-def sync(
-    site_url: Annotated[
-        Optional[str], typer.Option("--site-url", help="站點 URL")
-    ] = None,
-    site_id: Annotated[
-        Optional[int], typer.Option("--site-id", help="站點 ID")
-    ] = None,
-    start_date: Annotated[
-        Optional[str], typer.Option("--start-date", help="開始日期 (YYYY-MM-DD)")
-    ] = None,
-    end_date: Annotated[
-        Optional[str], typer.Option("--end-date", help="結束日期 (YYYY-MM-DD)")
-    ] = None,
-    force: Annotated[
-        bool, typer.Option("--force", help="強制重建數據")
-    ] = False,
-    all_sites: Annotated[
-        bool, typer.Option("--all-sites", help="同步所有站點")
-    ] = False,
-    days: Annotated[
-        int, typer.Option("--days", help="同步最近幾天", min=1, max=480)
-    ] = 7
-):
-    """
-    🔄 同步 Google Search Console 數據到本地數據庫
-    """
-    try:
-        gsc_client = GSCClient()
-        
-        if not gsc_client.is_authenticated():
-            typer.secho("❌ 請先進行認證：gsc-cli auth", fg=typer.colors.RED)
-            raise typer.Exit(1)
-        
-        # 使用新的 run_sync 函數
-        typer.echo(f"🔄 開始同步數據...")
-        
-        if all_sites:
-            # 同步所有站點
-            result = run_sync(sites=None, days=days)
-        elif site_url:
-            # 同步指定站點
-            result = run_sync(sites=[site_url], days=days)
-        elif site_id:
-            # 通過站點 ID 同步（需要先獲取站點 URL）
-            database = Database()
-            site = database.get_site_by_id(site_id)
-            if not site:
-                typer.secho(f"❌ 未找到站點 ID {site_id}", fg=typer.colors.RED)
-                raise typer.Exit(1)
-            result = run_sync(sites=[site['domain']], days=days)
-        else:
-            typer.secho("❌ 必須提供 --site-url、--site-id 或 --all-sites", fg=typer.colors.RED)
-            raise typer.Exit(1)
-        
-        if result['failed_sites'] == 0:
-            typer.secho("✅ 數據同步完成！", fg=typer.colors.GREEN)
-        else:
-            typer.secho(f"⚠️  同步完成，但有 {result['failed_sites']} 個站點失敗", fg=typer.colors.YELLOW)
-        
-    except Exception as e:
-        typer.secho(f"❌ 同步失敗：{e}", fg=typer.colors.RED)
-        logger.error(f"Sync failed: {e}")
+    table = Table(title=f"性能對比: {group_by.capitalize()} 表現 Top {limit}")
+    table.add_column("排名", style="cyan")
+    table.add_column(group_by.capitalize(), style="magenta", max_width=50, overflow="ellipsis")
+    table.add_column("點擊變化 (Δ)", style="green", justify="right")
+    table.add_column("曝光變化 (Δ)", style="blue", justify="right")
+    table.add_column("排名變化 (Δ)", style="red", justify="right")
+    table.add_column("詳情 (時段1 -> 時段2)", style="dim")
 
-
-@app.command()
-def bulk_sync(
-    site_ids: Annotated[
-        List[int], typer.Option("--site-id", help="站點 ID 列表")
-    ],
-    year: Annotated[
-        int, typer.Option("--year", help="年份")
-    ],
-    month: Annotated[
-        int, typer.Option("--month", help="月份", min=1, max=12)
-    ],
-    use_new_cli: Annotated[
-        bool, typer.Option("--use-new-cli", help="使用新的 CLI")
-    ] = True
-):
-    """
-    📅 批量同步指定站點的月度數據
-    """
-    try:
-        typer.echo(f"📅 開始批量同步 {len(site_ids)} 個站點的 {year}-{month:02d} 數據...")
+    for i, item in enumerate(data):
+        pos_change = item['position_change']
+        pos_str = f"{pos_change:+.2f}" if pos_change is not None else "N/A"
         
-        result = run_sync(
-            site_ids=site_ids,
-            year=year,
-            month=month,
-            use_new_cli=use_new_cli
+        table.add_row(
+            str(i + 1),
+            item['item'],
+            f"{item['clicks_change']:+.0f}",
+            f"{item['impressions_change']:+.0f}",
+            pos_str,
+            f"點擊: {item['period1_clicks'] or 0:.0f} -> {item['period2_clicks'] or 0:.0f}",
         )
-        
-        if result['failed_sites'] == 0:
-            typer.secho("✅ 批量同步完成！", fg=typer.colors.GREEN)
-        else:
-            typer.secho(f"⚠️  批量同步完成，但有 {result['failed_sites']} 個站點失敗", fg=typer.colors.YELLOW)
-        
-        # 顯示詳細結果
-        if result['details']:
-            table = Table(title="📊 同步詳細結果")
-            table.add_column("站點 ID", style="cyan")
-            table.add_column("成功天數", style="green")
-            table.add_column("跳過天數", style="yellow")
-            table.add_column("失敗天數", style="red")
-            table.add_column("總天數", style="blue")
-            
-            for detail in result['details']:
-                site_result = detail['result']
-                table.add_row(
-                    str(detail['site_id']),
-                    str(site_result['success']),
-                    str(site_result['skip']),
-                    str(site_result['fail']),
-                    str(site_result['total'])
-                )
-            
-            console.print(table)
-        
-    except Exception as e:
-        typer.secho(f"❌ 批量同步失敗：{e}", fg=typer.colors.RED)
-        logger.error(f"Bulk sync failed: {e}")
-
-
-@app.command()
-def progress():
-    """
-    📋 顯示最近的同步任務進度
-    """
-    try:
-        database = Database()
-        recent_tasks = database.get_recent_tasks(limit=10)
-        
-        if not recent_tasks:
-            typer.secho("📭 沒有找到最近的同步任務", fg=typer.colors.YELLOW)
-            return
-        
-        table = Table(title="📋 最近的同步任務")
-        table.add_column("任務 ID", style="cyan")
-        table.add_column("站點", style="green")
-        table.add_column("開始時間", style="yellow")
-        table.add_column("結束時間", style="blue")
-        table.add_column("狀態", style="magenta")
-        table.add_column("記錄數", style="red")
-        
-        for task in recent_tasks:
-            status_color = "green" if task['status'] == 'completed' else "red"
-            table.add_row(
-                str(task['id']),
-                task['site_name'],
-                str(task['start_time']),
-                str(task['end_time']) if task['end_time'] else "進行中",
-                f"[{status_color}]{task['status']}[/{status_color}]",
-                str(task['records_count']) if task['records_count'] else "0"
-            )
-        
-        console.print(table)
-        
-    except Exception as e:
-        typer.secho(f"❌ 獲取進度失敗：{e}", fg=typer.colors.RED)
-
-
-@app.command()
-def hourly_sync(
-    site_url: Annotated[
-        Optional[str], typer.Option("--site-url", help="站點 URL")
-    ] = None,
-    start_date: Annotated[
-        Optional[str], typer.Option("--start-date", help="開始日期 (默認昨天)")
-    ] = None,
-    end_date: Annotated[
-        Optional[str], typer.Option("--end-date", help="結束日期 (默認今天)")
-    ] = None
-):
-    """
-    ⏰ 同步每小時數據
-    """
-    try:
-        from services.hourly_data import HourlyDataSync
-        
-        # 確定日期範圍
-        if not start_date:
-            start_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        if not end_date:
-            end_date = datetime.now().strftime('%Y-%m-%d')
-        
-        if not site_url:
-            site_url = typer.prompt("請輸入站點 URL")
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            progress.add_task(f"正在同步 {site_url} 的每小時數據...", total=None)
-            
-            hourly_sync = HourlyDataSync()
-            hourly_sync.sync_hourly_data(site_url, start_date, end_date)
-        
-        typer.secho("✅ 每小時數據同步完成！", fg=typer.colors.GREEN)
-        
-    except Exception as e:
-        typer.secho(f"❌ 每小時數據同步失敗：{e}", fg=typer.colors.RED)
-
-
-@app.command()
-def hourly_summary(
-    site_id: Annotated[
-        Optional[int], typer.Option("--site-id", help="站點 ID")
-    ] = None,
-    date: Annotated[
-        Optional[str], typer.Option("--date", help="日期 (YYYY-MM-DD)")
-    ] = None
-):
-    """
-    📊 顯示每小時數據總結
-    """
-    try:
-        from services.hourly_database import HourlyDatabase
-        
-        hourly_db = HourlyDatabase()
-        
-        if not date:
-            date = datetime.now().strftime('%Y-%m-%d')
-        
-        if site_id:
-            summary = hourly_db.get_hourly_summary_by_site(site_id, date)
-        else:
-            summary = hourly_db.get_hourly_summary_all_sites(date)
-        
-        if not summary:
-            typer.secho(f"❌ 未找到 {date} 的每小時數據", fg=typer.colors.YELLOW)
-            return
-        
-        table = Table(title=f"⏰ {date} 每小時數據總結")
-        table.add_column("小時", style="cyan")
-        table.add_column("點擊數", style="green")
-        table.add_column("展示數", style="yellow")
-        table.add_column("CTR", style="blue")
-        table.add_column("平均排名", style="magenta")
-        
-        for row in summary:
-            table.add_row(
-                str(row['hour']),
-                str(row['clicks']),
-                str(row['impressions']),
-                f"{row['ctr']:.2%}",
-                f"{row['avg_position']:.1f}"
-            )
-        
-        console.print(table)
-        
-    except Exception as e:
-        typer.secho(f"❌ 獲取每小時總結失敗：{e}", fg=typer.colors.RED)
-
-
-@app.command()
-def hourly_coverage(
-    site_id: Annotated[
-        Optional[int], typer.Option("--site-id", help="站點 ID")
-    ] = None
-):
-    """
-    📈 顯示每小時數據覆蓋情況
-    """
-    try:
-        from services.hourly_database import HourlyDatabase
-        
-        hourly_db = HourlyDatabase()
-        
-        if site_id:
-            coverage = hourly_db.get_hourly_coverage_by_site(site_id)
-        else:
-            coverage = hourly_db.get_hourly_coverage_all_sites()
-        
-        if not coverage:
-            typer.secho("❌ 未找到每小時數據覆蓋信息", fg=typer.colors.YELLOW)
-            return
-        
-        table = Table(title="📈 每小時數據覆蓋情況")
-        table.add_column("站點", style="cyan")
-        table.add_column("數據天數", style="green")
-        table.add_column("最新日期", style="yellow")
-        table.add_column("最早日期", style="blue")
-        table.add_column("總記錄數", style="magenta")
-        
-        for site_coverage in coverage:
-            table.add_row(
-                site_coverage['site_name'],
-                str(site_coverage['days']),
-                str(site_coverage['latest_date']),
-                str(site_coverage['earliest_date']),
-                str(site_coverage['total_records'])
-            )
-        
-        console.print(table)
-        
-    except Exception as e:
-        typer.secho(f"❌ 獲取每小時覆蓋情況失敗：{e}", fg=typer.colors.RED)
-
-
-@app.command()
-def api_status():
-    """
-    🔍 顯示 API 使用狀態
-    """
-    try:
-        gsc_client = GSCClient()
-        
-        if not gsc_client.is_authenticated():
-            typer.secho("❌ 未認證，無法獲取 API 狀態", fg=typer.colors.RED)
-            return
-        
-        # 這裡可以添加獲取 API 配額使用情況的代碼
-        typer.secho("✅ API 連接正常", fg=typer.colors.GREEN)
-        typer.echo("📊 API 配額使用情況：")
-        typer.echo("  - 每日配額：10,000 次請求")
-        typer.echo("  - 已使用：需要實現配額檢查")
-        typer.echo("  - 剩餘：需要實現配額檢查")
-        
-    except Exception as e:
-        typer.secho(f"❌ 獲取 API 狀態失敗：{e}", fg=typer.colors.RED)
-
-
-@app.command()
-def logs(
-    lines: Annotated[
-        int, typer.Option("--lines", help="顯示行數", min=1, max=1000)
-    ] = 50,
-    error_only: Annotated[
-        bool, typer.Option("--error-only", help="只顯示錯誤日誌")
-    ] = False
-):
-    """
-    📝 查看同步日誌
-    """
-    try:
-        import subprocess
-        import os
-        
-        log_file = config.LOG_FILE_PATH
-        
-        if not os.path.exists(log_file):
-            typer.secho(f"❌ 日誌文件 {log_file} 不存在", fg=typer.colors.YELLOW)
-            return
-        
-        # 構建 tail 命令
-        cmd = ["tail", "-n", str(lines), log_file]
-        
-        if error_only:
-            # 如果只顯示錯誤，使用 grep 過濾
-            cmd = ["tail", "-n", "1000", log_file, "|", "grep", "-i", "error", "|", "tail", "-n", str(lines)]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.stdout:
-            typer.echo("📝 最近的日誌：")
-            typer.echo(result.stdout)
-        else:
-            typer.secho("📭 沒有找到相關日誌", fg=typer.colors.YELLOW)
-            
-    except Exception as e:
-        typer.secho(f"❌ 查看日誌失敗：{e}", fg=typer.colors.RED)
-
-
-@app.command()
-def report(
-    report_type: Annotated[
-        str, typer.Argument(help="報告類型 (例如: 'monthly', 'weekly', 'keyword', 'page')")
-    ] = "monthly",
-    output_path: Annotated[
-        str, typer.Option("--output", "-o", help="報告輸出路徑")
-    ] = "gsc_report.md",
-    days: Annotated[
-        int, typer.Option("--days", "-d", help="分析天數", min=1, max=365)
-    ] = 30,
-    site_url: Annotated[
-        Optional[str], typer.Option("--site-url", help="為特定站點 URL 生成報告")
-    ] = None,
-    include_plots: Annotated[
-        bool, typer.Option("--no-plots", help="不生成圖表")
-    ] = True,
-    plot_dir: Annotated[
-        Optional[str], typer.Option("--plot-dir", help="圖表保存目錄")
-    ] = None,
-    db_path: Annotated[
-        str, typer.Option("--db", help="數據庫文件路徑")
-    ] = str(config.DB_PATH)
-):
-    """
-    📊 生成 GSC 數據分析報告
-    
-    支持多種報告類型：
-    - monthly: 月度報告（默認）
-    - weekly: 週度報告
-    - keyword: 關鍵字專項報告
-    - page: 頁面表現報告
-    """
-    try:
-        typer.echo(f"📊 開始生成 {report_type} 報告...")
-        
-        # 根據報告類型調整默認天數
-        if report_type == "weekly" and days == 30:
-            days = 7
-        elif report_type == "keyword" and days == 30:
-            days = 14
-        elif report_type == "page" and days == 30:
-            days = 14
-        
-        # 如果指定了站點 URL，驗證其有效性
-        if site_url:
-            database = Database()
-            sites = database.get_sites()
-            site_found = False
-            for site in sites:
-                if site['domain'] in site_url or site_url in site['domain']:
-                    site_found = True
-                    typer.echo(f"✅ 找到匹配的站點: {site['name']} ({site['domain']})")
-                    break
-            
-            if not site_found:
-                typer.secho(f"⚠️  警告: 未找到匹配的站點 URL: {site_url}", fg=typer.colors.YELLOW)
-                typer.echo("將生成所有站點的綜合報告")
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            progress.add_task(f"正在生成 {report_type} 報告...", total=None)
-            
-            # 確保報告保存在 reports 目錄下
-            final_output_path = Path(output_path)
-            if not final_output_path.is_absolute() and final_output_path.name == output_path:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                final_output_path = config.REPORTS_DIR / f"gsc_{report_type}_report_{timestamp}.md"
-            
-            result = build_report(
-                output_path=str(final_output_path),
-                days=days,
-                include_plots=include_plots,
-                plot_save_dir=plot_dir,
-                db_path=db_path
-            )
-        
-        if result['success']:
-            typer.secho(f"✅ 報告生成成功: {result['report_path']}", fg=typer.colors.GREEN)
-            
-            if result['plots_generated']:
-                typer.echo(f"📊 生成的圖表: {', '.join(result['plots_generated'])}")
-            
-            if 'summary' in result:
-                summary = result['summary']
-                table = Table(title="📈 數據摘要")
-                table.add_column("指標", style="cyan")
-                table.add_column("數值", style="green")
-                
-                table.add_row("總記錄數", f"{summary['total_records']:,}")
-                table.add_row("數據天數", str(summary['total_days']))
-                table.add_row("關鍵字數量", f"{summary['total_keywords']:,}")
-                table.add_row("頁面數量", f"{summary['total_pages']:,}")
-                table.add_row("最新數據日期", str(summary['latest_date']))
-                
-                console.print(table)
-        else:
-            typer.secho("❌ 報告生成失敗", fg=typer.colors.RED)
-            for error in result['errors']:
-                typer.echo(f"  - {error}")
-            raise typer.Exit(1)
-        
-    except Exception as e:
-        typer.secho(f"❌ 生成報告失敗：{e}", fg=typer.colors.RED)
-        logger.error(f"Report generation failed: {e}")
-
-
-@app.command()
-def analyze_hourly(
-    analysis_type: Annotated[
-        str, typer.Option("--type", help="分析類型", case_sensitive=False)
-    ] = "trends",
-    days: Annotated[
-        int, typer.Option("--days", help="分析天數", min=1, max=30)
-    ] = 7,
-    output_path: Annotated[
-        Optional[str], typer.Option("--output", "-o", help="報告輸出路徑")
-    ] = None,
-    include_plots: Annotated[
-        bool, typer.Option("--no-plots", help="不生成圖表")
-    ] = True,
-    plot_dir: Annotated[
-        Optional[str], typer.Option("--plot-dir", help="圖表保存目錄")
-    ] = None,
-    db_path: Annotated[
-        str, typer.Option("--db", help="數據庫文件路徑")
-    ] = str(config.DB_PATH)
-):
-    """
-    ⏰ 每小時數據分析
-    
-    支持的分析類型：
-    - trends: 每小時趨勢圖（默認）
-    - heatmap: 每日每小時熱力圖
-    - peaks: 高峰時段分析
-    - report: 每小時數據報告
-    - all: 生成所有分析
-    """
-    try:
-        typer.echo(f"⏰ 開始每小時數據分析，類型: {analysis_type}...")
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            progress.add_task(f"正在進行 {analysis_type} 分析...", total=None)
-            
-            final_output_path = None
-            if output_path:
-                final_output_path = Path(output_path)
-                if not final_output_path.is_absolute() and final_output_path.name == output_path:
-                    final_output_path = config.REPORTS_DIR / final_output_path
-            
-            result = run_hourly_analysis(
-                analysis_type=analysis_type,
-                days=days,
-                output_path=str(final_output_path) if final_output_path else None,
-                include_plots=include_plots,
-                plot_save_dir=plot_dir,
-                db_path=db_path
-            )
-        
-        if result['success']:
-            typer.secho(f"✅ 每小時分析成功: {result['analysis_type']}", fg=typer.colors.GREEN)
-            
-            if result['plots_generated']:
-                typer.echo(f"📊 生成的圖表: {', '.join(result['plots_generated'])}")
-            
-            if result['report_path']:
-                typer.echo(f"📄 報告路徑: {result['report_path']}")
-            
-            if 'summary' in result:
-                summary = result['summary']
-                table = Table(title="⏰ 每小時數據摘要")
-                table.add_column("指標", style="cyan")
-                table.add_column("數值", style="green")
-                
-                table.add_row("點擊總量", f"{summary['total_clicks']:,}")
-                table.add_row("曝光總量", f"{summary['total_impressions']:,}")
-                table.add_row("關鍵字總數", f"{summary['unique_queries']:,}")
-                table.add_row("高峰時段", f"{summary['peak_hour']:02d}:00")
-                table.add_row("低谷時段", f"{summary['low_hour']:02d}:00")
-                
-                console.print(table)
-        else:
-            typer.secho("❌ 每小時分析失敗", fg=typer.colors.RED)
-            for error in result['errors']:
-                typer.echo(f"  - {error}")
-            raise typer.Exit(1)
-        
-    except Exception as e:
-        typer.secho(f"❌ 每小時分析失敗：{e}", fg=typer.colors.RED)
-        logger.error(f"Hourly analysis failed: {e}")
-
-
-@app.command(name="analyze-hourly-gemini")
-def analyze_hourly_gemini_command(
-    site_url: Annotated[Optional[str], typer.Option("--site-url", help="Analyze a specific site URL.")] = None,
-    days: Annotated[int, typer.Option(help="Number of past days to analyze.", min=1)] = 30,
-):
-    """
-    [Gemini] Analyze hourly performance trends from the database (simple version).
-    """
-    typer.echo("[Gemini] Analyzing hourly performance data...")
-    from hourly_performance_analyzer import run_hourly_analysis_gemini
-    run_hourly_analysis_gemini(site_url=site_url, days=days)
-    typer.secho("✅ [Gemini] Hourly analysis complete.", fg=typer.colors.GREEN)
-
-
-@app.command()
-def plot(
-    site_id: Annotated[
-        Optional[int], typer.Option("--site-id", help="站點 ID")
-    ] = None,
-    plot_type: Annotated[
-        str, typer.Option("--type", help="圖表類型", case_sensitive=False)
-    ] = "clicks",
-    days: Annotated[
-        int, typer.Option("--days", help="天數範圍", min=1, max=365)
-    ] = 30,
-    save: Annotated[
-        Optional[str], typer.Option("--save", help="保存圖片路徑")
-    ] = None
-):
-    """
-    📊 繪製數據圖表
-    """
-    try:
-        import matplotlib.pyplot as plt
-        import matplotlib.dates as mdates
-        from datetime import datetime, timedelta
-        
-        database = Database()
-        
-        if not site_id:
-            sites = database.get_sites()
-            if not sites:
-                typer.secho("❌ 沒有可用的站點", fg=typer.colors.RED)
-                return
-            
-            site_id = sites[0]['id']
-            typer.echo(f"使用第一個站點 ID: {site_id}")
-        
-        # 確定日期範圍
-        end_date = datetime.now().date()
-        start_date = end_date - timedelta(days=days)
-        
-        conn = database.get_connection()
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            progress.add_task(f"正在生成 {plot_type} 圖表...", total=None)
-            
-            if plot_type.lower() == "clicks":
-                plot_clicks_trend(conn, site_id, start_date, end_date, save)
-            elif plot_type.lower() == "rankings":
-                plot_rankings_trend(conn, site_id, start_date, end_date, save)
-            elif plot_type.lower() == "coverage":
-                plot_data_coverage(conn, site_id, save)
-            else:
-                typer.secho(f"❌ 不支持的圖表類型：{plot_type}", fg=typer.colors.RED)
-                return
-        
-        typer.secho("✅ 圖表生成完成！", fg=typer.colors.GREEN)
-        if save:
-            typer.echo(f"📁 圖片已保存到：{save}")
-        
-    except Exception as e:
-        typer.secho(f"❌ 生成圖表失敗：{e}", fg=typer.colors.RED)
-
-
-def plot_clicks_trend(conn, site_id, start_date, end_date, save_path=None):
-    """繪製點擊趨勢圖"""
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    
-    query = """
-    SELECT date, SUM(clicks) as total_clicks, SUM(impressions) as total_impressions
-    FROM gsc_data 
-    WHERE site_id = ? AND date BETWEEN ? AND ?
-    GROUP BY date 
-    ORDER BY date
-    """
-    
-    df = pd.read_sql_query(query, conn, params=[site_id, start_date, end_date])
-    
-    if df.empty:
-        raise ValueError("沒有找到數據")
-    
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
-    
-    # 點擊數趨勢
-    ax1.plot(df['date'], df['total_clicks'], marker='o', linewidth=2, markersize=4)
-    ax1.set_title('點擊數趨勢', fontsize=14, fontweight='bold')
-    ax1.set_ylabel('點擊數')
-    ax1.grid(True, alpha=0.3)
-    
-    # 展示數趨勢
-    ax2.plot(df['date'], df['total_impressions'], marker='s', linewidth=2, markersize=4, color='orange')
-    ax2.set_title('展示數趨勢', fontsize=14, fontweight='bold')
-    ax2.set_ylabel('展示數')
-    ax2.set_xlabel('日期')
-    ax2.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    else:
-        plt.show()
-
-
-def plot_rankings_trend(conn, site_id, start_date, end_date, save_path=None):
-    """繪製排名趨勢圖"""
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    
-    query = """
-    SELECT date, AVG(avg_position) as avg_ranking
-    FROM gsc_data 
-    WHERE site_id = ? AND date BETWEEN ? AND ?
-    GROUP BY date 
-    ORDER BY date
-    """
-    
-    df = pd.read_sql_query(query, conn, params=[site_id, start_date, end_date])
-    
-    if df.empty:
-        raise ValueError("沒有找到數據")
-    
-    plt.figure(figsize=(12, 6))
-    plt.plot(df['date'], df['avg_ranking'], marker='o', linewidth=2, markersize=4, color='red')
-    plt.title('平均排名趨勢', fontsize=14, fontweight='bold')
-    plt.ylabel('平均排名')
-    plt.xlabel('日期')
-    plt.grid(True, alpha=0.3)
-    
-    # 排名越低越好，所以反轉 Y 軸
-    plt.gca().invert_yaxis()
-    
-    plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    else:
-        plt.show()
-
-
-def plot_data_coverage(conn, site_id, save_path=None):
-    """繪製數據覆蓋圖"""
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    
-    query = """
-    SELECT date, COUNT(*) as record_count
-    FROM gsc_data 
-    WHERE site_id = ?
-    GROUP BY date 
-    ORDER BY date
-    """
-    
-    df = pd.read_sql_query(query, conn, params=[site_id])
-    
-    if df.empty:
-        raise ValueError("沒有找到數據")
-    
-    plt.figure(figsize=(12, 6))
-    plt.bar(df['date'], df['record_count'], alpha=0.7, color='green')
-    plt.title('數據覆蓋情況', fontsize=14, fontweight='bold')
-    plt.ylabel('記錄數')
-    plt.xlabel('日期')
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    else:
-        plt.show()
-
-
-if __name__ == "__main__":
-    app()
+    console.print(table)

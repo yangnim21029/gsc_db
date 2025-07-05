@@ -12,80 +12,99 @@ logger = logging.getLogger(__name__)
 class HourlyDatabase:
     """處理每小時數據的數據庫操作"""
 
-    def __init__(self, db_connection_func):
+    def __init__(self, db_connection_func, site_url: str):
         self.get_connection = db_connection_func
+        self.site_url = site_url
 
-    def init_hourly_tables(self):
-        """初始化每小時數據表"""
-        with self.get_connection() as conn:
-            # 每小時排名數據表
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS hourly_rankings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    site_id INTEGER NOT NULL,
-                    keyword_id INTEGER,
-                    date TEXT NOT NULL,
-                    hour INTEGER NOT NULL,
-                    hour_timestamp TEXT NOT NULL,
-                    query TEXT,
-                    position REAL,
-                    clicks INTEGER DEFAULT 0,
-                    impressions INTEGER DEFAULT 0,
-                    ctr REAL DEFAULT 0,
-                    page TEXT,
-                    country TEXT DEFAULT 'TWN',
-                    device TEXT DEFAULT 'ALL',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (site_id) REFERENCES sites (id),
-                    FOREIGN KEY (keyword_id) REFERENCES keywords (id),
-                    UNIQUE(site_id, hour_timestamp, query, page)
-                )
-            ''')
+    def sync_data(self, client, start_date: str, end_date: str) -> int:
+        """
+        同步指定時間範圍內的每小時數據。
+        這是一個高階方法，協調 GSC 客戶端和數據庫保存。
+        """
+        total_inserted_count = 0
+        logger.info(f"開始為站點 {self.site_url} 同步 {start_date} 到 {end_date} 的每小時數據。")
 
-            # 每小時數據專用索引
-            conn.execute(
-                'CREATE INDEX IF NOT EXISTS idx_hourly_rankings_date ON hourly_rankings(date)')
-            conn.execute(
-                'CREATE INDEX IF NOT EXISTS idx_hourly_rankings_site ON hourly_rankings(site_id)')
-            conn.execute(
-                'CREATE INDEX IF NOT EXISTS idx_hourly_rankings_hour ON hourly_rankings(hour)')
-            conn.execute(
-                'CREATE INDEX IF NOT EXISTS idx_hourly_rankings_timestamp ON hourly_rankings(hour_timestamp)')
+        try:
+            # 1. 從主數據庫獲取 site_id
+            with self.get_connection() as conn:
+                site_row = conn.execute("SELECT id FROM sites WHERE domain = ?", (self.site_url,)).fetchone()
+                if not site_row:
+                    logger.error(f"在 'sites' 表中找不到站點 {self.site_url}，無法進行每小時同步。")
+                    return 0
+                site_id = site_row['id']
 
-            conn.commit()
+            # 2. 從 GSC Client 獲取數據流
+            # 我們假設 gsc_client 有一個 stream_hourly_data 方法
+            data_stream = client.stream_hourly_data(
+                site_url=self.site_url,
+                start_date=start_date,
+                end_date=end_date
+            )
+
+            # 3. 處理數據流並保存
+            chunk = []
+            chunk_size = 200  # 每 200 條記錄保存一次
+
+            for item in data_stream:
+                # 為每條記錄添加 site_id
+                item['site_id'] = site_id
+                chunk.append(item)
+                if len(chunk) >= chunk_size:
+                    inserted_count = self.save_hourly_ranking_data(chunk)
+                    total_inserted_count += inserted_count
+                    chunk = []
+            
+            # 保存最後剩餘的記錄
+            if chunk:
+                inserted_count = self.save_hourly_ranking_data(chunk)
+                total_inserted_count += inserted_count
+
+            logger.info(f"站點 {self.site_url} 的每小時數據同步完成，共新增 {total_inserted_count} 條記錄。")
+            return total_inserted_count
+
+        except AttributeError as e:
+            # 捕獲 GSCClient 中可能不存在 stream_hourly_data 的情況
+            logger.error(f"GSCClient 中缺少 'stream_hourly_data' 方法，無法執行每小時同步。請實現此方法。")
+            logger.debug(e)
+            return 0
+        except Exception as e:
+            logger.error(f"同步站點 {self.site_url} 的每小時數據時發生錯誤: {e}")
+            return 0
+
+
+    # Table creation is handled by Database.init_db() to avoid duplication
 
     def save_hourly_ranking_data(
             self, hourly_rankings: List[Dict[str, Any]]) -> int:
-        """保存每小時排名數據"""
-        saved_count = 0
-        with self.get_connection() as conn:
-            for ranking in hourly_rankings:
-                try:
-                    conn.execute('''
-                        INSERT OR REPLACE INTO hourly_rankings
-                        (site_id, keyword_id, date, hour, hour_timestamp, query, position, clicks, impressions, ctr, page, country, device)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        ranking['site_id'],
-                        ranking.get('keyword_id'),
-                        ranking['date'],
-                        ranking['hour'],
-                        ranking['hour_timestamp'],
-                        ranking['query'],
-                        ranking.get('position'),
-                        ranking.get('clicks', 0),
-                        ranking.get('impressions', 0),
-                        ranking.get('ctr', 0),
-                        ranking.get('page'),
-                        ranking.get('country', 'TWN'),
-                        ranking.get('device', 'ALL')
-                    ))
-                    saved_count += 1
-                except Exception as e:
-                    logger.error(f"Failed to save hourly ranking: {e}")
+        """保存每小時排名數據 (使用批量操作優化)"""
+        if not hourly_rankings:
+            return 0
 
-            conn.commit()
-        return saved_count
+        data_to_insert = [
+            (
+                r['site_id'], r.get('keyword_id'), r['date'], r['hour'],
+                r['hour_timestamp'], r['query'], r.get('position'),
+                r.get('clicks', 0), r.get('impressions', 0), r.get('ctr', 0),
+                r.get('page'), r.get('country', 'TWN'), r.get('device', 'ALL')
+            ) for r in hourly_rankings
+        ]
+
+        with self.get_connection() as conn:
+            try:
+                cursor = conn.cursor()
+                cursor.executemany('''
+                    INSERT OR REPLACE INTO hourly_rankings
+                    (site_id, keyword_id, date, hour, hour_timestamp, query, position, clicks, impressions, ctr, page, country, device)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', data_to_insert)
+                conn.commit()
+                saved_count = cursor.rowcount if cursor.rowcount != -1 else len(data_to_insert)
+                logger.info(f"Saved {saved_count} hourly ranking records")
+                return saved_count
+            except Exception as e:
+                logger.error(f"Failed to save hourly ranking data in batch: {e}")
+                conn.rollback()
+                return 0
 
     def get_hourly_rankings(self,
                             site_id: Optional[int] = None,
@@ -97,13 +116,13 @@ class HourlyDatabase:
         """獲取每小時排名數據"""
         with self.get_connection() as conn:
             conditions = []
-            params = []
+            params: List[Any] = []
 
-            if site_id:
+            if site_id is not None:
                 conditions.append('hr.site_id = ?')
                 params.append(site_id)
 
-            if keyword_id:
+            if keyword_id is not None:
                 conditions.append('hr.keyword_id = ?')
                 params.append(keyword_id)
 

@@ -846,7 +846,7 @@ class GSCClient:
         if dimensions is None:
             dimensions = ["query"]
 
-        all_rows = []
+        all_rows: List[Dict[str, Any]] = []
         max_rows_per_request = 25000
         start_row = 0
 

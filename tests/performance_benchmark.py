@@ -54,7 +54,7 @@ def benchmark_old_method(data: List[Dict[str, Any]], db_connection_func) -> floa
 
     from src.services.hourly_database import HourlyDatabase
 
-    HourlyDatabase(db_connection_func)
+    HourlyDatabase(db_connection_func, "test-site")
 
     # 模擬舊的逐行插入方法
     start_time = time.time()
@@ -102,7 +102,7 @@ def benchmark_new_method(data: List[Dict[str, Any]], db_connection_func) -> floa
 
     from src.services.hourly_database import HourlyDatabase
 
-    hourly_db = HourlyDatabase(db_connection_func)
+    hourly_db = HourlyDatabase(db_connection_func, "test-site")
 
     start_time = time.time()
     hourly_db.save_hourly_ranking_data(data)

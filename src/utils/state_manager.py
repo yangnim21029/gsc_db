@@ -28,9 +28,15 @@ class StateManager:
         if not STATE_FILE_PATH.exists():
             return None
         try:
-            state = json.loads(STATE_FILE_PATH.read_text(encoding="utf-8"))
+            state_data = json.loads(STATE_FILE_PATH.read_text(encoding="utf-8"))
             logger.debug("Sync state loaded successfully.")
-            return state
+            # 確保返回的是字典類型
+            if isinstance(state_data, dict):
+                return state_data
+            else:
+                logger.warning("Sync state file contains non-dict data, starting fresh")
+                StateManager.clear_sync_state()
+                return None
         except (json.JSONDecodeError, KeyError) as e:
             logger.error(f"Failed to load or parse sync state file, starting fresh: {e}")
             # 如果文件損壞，將其清除

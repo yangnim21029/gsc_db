@@ -64,8 +64,8 @@ def site_list(
         else:
             remote_table = Table(title="GSC 遠程站點")
             remote_table.add_column("站點 URL", style="green")
-            for site in remote_sites:
-                remote_table.add_row(site)
+            for site_url in remote_sites:
+                remote_table.add_row(site_url)
             console.print(remote_table)
     except Exception as e:
         console.print(f"[red]❌ 無法從 Google API 獲取站點列表: {e}[/red]")
@@ -81,9 +81,11 @@ def site_list(
         local_table.add_column("名稱", style="magenta")
         local_table.add_column("網域", style="green")
         local_table.add_column("狀態", style="yellow")
-        for site in local_sites:
-            status = "✅ 有效" if site["is_active"] else "❌ 無效"
-            local_table.add_row(str(site["id"]), site["name"], site["domain"], status)
+        for site_dict in local_sites:
+            status = "✅ 有效" if site_dict["is_active"] else "❌ 無效"
+            local_table.add_row(
+                str(site_dict["id"]), site_dict["name"], site_dict["domain"], status
+            )
         console.print(local_table)
 
 

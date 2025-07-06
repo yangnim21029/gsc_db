@@ -362,7 +362,7 @@ class AnalysisService:
             report_generated = self._create_markdown_report(
                 visualizer=visualizer,
                 site_id=site_id,
-                days=30, # Default days for report generation
+                days=30,  # Default days for report generation
                 output_path=output_path,
                 include_plots=include_plots,
                 plot_save_dir=plot_save_dir,

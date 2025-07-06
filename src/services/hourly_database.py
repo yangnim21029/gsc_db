@@ -207,7 +207,7 @@ class HourlyDatabase:
 
             if site_id is not None:
                 conditions.append("hr.site_id = ?")
-                params.append(site_id)  # type: ignore
+                params.append(site_id)
 
             if keyword_id is not None:
                 conditions.append("hr.keyword_id = ?")
@@ -245,7 +245,7 @@ class HourlyDatabase:
         """獲取每小時數據總結"""
         with self.get_connection() as conn:
             conditions = ["hr.site_id = ?"]
-            params = [site_id]
+            params: List[Any] = [site_id]
 
             if date:
                 conditions.append("hr.date = ?")

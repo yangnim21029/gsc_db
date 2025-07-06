@@ -147,9 +147,12 @@ class GSCClient:
                     if not rows:
                         break
 
-                    device_chunks = {}
+                    device_chunks: Dict[str, List[Dict[str, Any]]] = {}
                     for row in rows:
-                        keys = dict(zip(request_body["dimensions"], row["keys"]))
+                        dimensions = request_body["dimensions"]
+                        row_keys = row["keys"]
+                        # 確保類型正確
+                        keys = dict(zip(dimensions, row_keys)) if dimensions and row_keys else {}  # type: ignore  # type: ignore
                         device = keys.get("device", "N/A")
 
                         if device not in device_chunks:
@@ -221,7 +224,10 @@ class GSCClient:
                     break
 
                 for row in rows:
-                    keys = dict(zip(request_body["dimensions"], row["keys"]))
+                    dimensions = request_body["dimensions"]
+                    row_keys = row["keys"]
+                    # 確保類型正確  # type: ignore
+                    keys = dict(zip(dimensions, row_keys)) if dimensions and row_keys else {}  # type: ignore
                     # API 回傳的 'HOUR' 鍵是一個完整的 ISO 8601 時間戳
                     dt_str = keys.get("HOUR", "")
                     if not dt_str:
@@ -258,7 +264,9 @@ class GSCClient:
         """載入 Google OAuth 客戶端配置"""
         try:
             with open(self.client_config_path, "r") as f:
-                return json.load(f)
+                config_data = json.load(f)
+                # 確保返回正確的類型
+                return dict(config_data) if isinstance(config_data, dict) else {"web": {}}
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.error(f"Failed to load client config from {self.client_config_path}: {e}")
             return {"web": {}}
@@ -275,7 +283,7 @@ class GSCClient:
             access_type="offline", include_granted_scopes="false", prompt="consent"
         )
 
-        return auth_url
+        return str(auth_url)
 
     def handle_oauth_callback(self, code: str) -> bool:
         """處理OAuth回調"""
@@ -400,7 +408,8 @@ class GSCClient:
 
         try:
             sitemaps_response = self.service.sitemaps().list(siteUrl=site_url).execute()
-            return sitemaps_response.get("sitemap", [])
+            sitemaps = sitemaps_response.get("sitemap", [])
+            return list(sitemaps) if sitemaps else []
 
         except HttpError as e:
             logger.error(f"Failed to get sitemaps for {site_url}: {e}")
@@ -418,7 +427,7 @@ class GSCClient:
             sitemap_response = (
                 self.service.sitemaps().get(siteUrl=site_url, feedpath=feedpath).execute()
             )
-            return sitemap_response
+            return dict(sitemap_response) if sitemap_response else {}
 
         except HttpError as e:
             logger.error(f"Failed to get sitemap details for {site_url}/{feedpath}: {e}")
@@ -508,7 +517,7 @@ class GSCClient:
             request = {"inspectionUrl": inspection_url, "siteUrl": site_url}
 
             response = self.service.urlInspection().index().inspect(request).execute()
-            return response
+            return dict(response) if response else {}
 
         except HttpError as e:
             logger.error(f"獲取 URL 檢查結果時出錯: {e}")
@@ -540,7 +549,7 @@ class GSCClient:
                 .execute()
             )
             self._track_api_request()
-            return response
+            return dict(response) if response else {}
         except Exception as e:
             logger.error(f"從搜索分析獲取頁面樣本時出錯: {e}")
             return {"error": str(e)}
@@ -555,7 +564,7 @@ class GSCClient:
         try:
             response = self.service.urlcrawlerrorscounts().query(siteUrl=site_url).execute()
             self._track_api_request()
-            return response
+            return dict(response) if response else {}
         except HttpError as e:
             logger.error(f"Failed to get crawl stats for {site_url}: {e}")
             return {"error": str(e), "status": e.resp.status}
@@ -821,7 +830,8 @@ class GSCClient:
             )
 
             self._track_api_request()  # 追蹤API使用
-            return response.get("rows", [])
+            rows = response.get("rows", [])
+            return list(rows) if rows else []
 
         except HttpError as e:
             logger.error(f"Failed to get search analytics for {site_url}: {e}")

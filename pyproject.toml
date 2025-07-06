@@ -60,6 +60,25 @@ quote-style = "double"
 python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
+# 忽略缺少類型註解的第三方庫
+ignore_missing_imports = true
+
+# 針對特定模塊的配置
+[[tool.mypy.overrides]]
+module = [
+    "googleapiclient.*",
+    "google_auth_oauthlib.*",
+    "plotly.*",
+    "matplotlib.*",
+    "pandas.*",
+    "numpy.*",
+    "sklearn.*",
+    "tqdm.*",
+    "dependency_injector.*",
+    "tenacity.*"
+]
+ignore_missing_imports = true
+ignore_errors = true
 
 [tool.poetry.scripts]
 gsc-cli = "src.app:main"

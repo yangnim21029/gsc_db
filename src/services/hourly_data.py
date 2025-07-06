@@ -54,7 +54,8 @@ class HourlyDataHandler:
 
             rows = response.get("rows", [])
             logger.info(f"Retrieved {len(rows)} hourly data rows for {site_url}")
-            return rows
+            # 確保返回正確的類型
+            return list(rows) if rows else []
 
         except HttpError as e:
             logger.error(f"Failed to get hourly analytics for {site_url}: {e}")

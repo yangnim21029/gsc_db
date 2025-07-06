@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 class GSCClient:
-    def __init__(self):
+    def __init__(self, db: Database):
         """初始化 GSC 客戶端"""
         self.scopes = config.GSC_SCOPES
         self.credentials_path = str(config.get_credentials_path())
@@ -43,7 +43,7 @@ class GSCClient:
         # 初始化狀態
         self.credentials: Optional[Credentials] = None
         self.service: Optional[Any] = None
-        self.database = Database(db_path=str(config.get_db_path()))
+        self.database = db
 
         # API 使用計數器
         self.api_requests_today = 0
@@ -179,7 +179,8 @@ class GSCClient:
                 except HttpError as e:
                     if e.resp.status in [404, 403, 400]:
                         logger.warning(
-                            f"No data or unsupported type for {site_url} with type {search_type} for date {start_date} (HTTP {e.resp.status}). Skipping."
+                            f"No data or unsupported type for {site_url} with type "
+                            f"{search_type} for date {start_date} (HTTP {e.resp.status}). Skipping."
                         )
                         break
                     logger.error(f"HTTP error for type {search_type}: {e}", exc_info=True)
@@ -869,7 +870,8 @@ class GSCClient:
                     row_limit = min(max_rows_per_request, max_total_rows - len(all_rows))
 
                 logger.info(
-                    f"Requesting batch: startRow={start_row}, rowLimit={row_limit}, total_so_far={len(all_rows)}"
+                    f"Requesting batch: startRow={start_row}, rowLimit={row_limit}, "
+                    f"total_so_far={len(all_rows)}"
                 )
 
                 request = {
@@ -970,7 +972,8 @@ class GSCClient:
 
             # 記錄到日誌
             logger.info(
-                f"API請求計數: 今日 {self.api_requests_today}, 本分鐘 {self.api_requests_this_minute}"
+                f"API請求計數: 今日 {self.api_requests_today}, "
+                f"本分鐘 {self.api_requests_this_minute}"
             )
 
     def get_api_usage_stats(self) -> Dict[str, Any]:
@@ -990,53 +993,16 @@ class GSCClient:
     def _load_api_usage_from_db(self):
         """從數據庫載入今日API使用計數"""
         try:
-            with self.database.get_connection() as conn:
-                # 創建API使用統計表（如果不存在）
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS api_usage_stats (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        date TEXT NOT NULL UNIQUE,
-                        requests_count INTEGER DEFAULT 0,
-                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-
-                # 載入今日的計數
-                today_str = self.today.strftime("%Y-%m-%d")
-                cursor = conn.execute(
-                    "SELECT requests_count FROM api_usage_stats WHERE date = ?",
-                    (today_str,),
-                )
-                result = cursor.fetchone()
-
-                if result:
-                    self.api_requests_today = result["requests_count"]
-                    logger.info(f"載入今日API使用計數: {self.api_requests_today}")
-                else:
-                    # 如果沒有記錄，創建新記錄
-                    conn.execute(
-                        "INSERT INTO api_usage_stats (date, requests_count) VALUES (?, 0)",
-                        (today_str,),
-                    )
-                    conn.commit()
+            self.database.init_api_usage_table()
+            # 載入今日的計數
+            today_str = self.today.strftime("%Y-%m-%d")
+            self.api_requests_today = self.database.get_api_usage(today_str)
+            logger.info(f"載入今日API使用計數: {self.api_requests_today}")
 
         except Exception as e:
             logger.error(f"載入API使用統計失敗: {e}")
 
     def _save_api_usage_to_db(self):
         """保存今日API使用計數到數據庫"""
-        try:
-            with self.database.get_connection() as conn:
-                today_str = self.today.strftime("%Y-%m-%d")
-                conn.execute(
-                    """
-                    UPDATE api_usage_stats
-                    SET requests_count = ?, last_updated = CURRENT_TIMESTAMP
-                    WHERE date = ?
-                """,
-                    (self.api_requests_today, today_str),
-                )
-                conn.commit()
-
-        except Exception as e:
-            logger.error(f"保存API使用統計失敗: {e}")
+        today_str = self.today.strftime("%Y-%m-%d")
+        self.database.update_api_usage(today_str, self.api_requests_today)

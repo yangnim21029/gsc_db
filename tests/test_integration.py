@@ -9,6 +9,7 @@
 from typer.testing import CliRunner
 
 from src.app import app  # 導入主 Typer 應用程式
+from src.services.database import SyncMode
 
 runner = CliRunner()
 
@@ -32,6 +33,9 @@ def test_site_list_command(test_app_runner):
     runner, test_container = test_app_runner
     site_service = test_container.site_service()
     mock_gsc_client = test_container.gsc_client()
+
+    # 設置 GSC 客戶端的模擬返回值
+    mock_gsc_client.get_sites.return_value = ["sc-domain:remote-example.com"]
 
     # 準備：在測試資料庫中預先插入一個站點
     site_service.add_site(domain="https://example.com", name="My Test Site")
@@ -64,3 +68,58 @@ def test_add_site_command(test_app_runner):
     assert site is not None
     assert site["name"] == "New Site"
     assert site["domain"] == "sc-domain:new-site.com"
+
+
+def test_sync_daily_command(test_app_runner, mocker):
+    """測試 `sync daily` 命令。"""
+    runner, test_container = test_app_runner
+
+    # 模擬 BulkDataSynchronizer 的 run_sync 方法
+    mock_run_sync = mocker.patch("src.jobs.bulk_data_synchronizer.BulkDataSynchronizer.run_sync")
+
+    # 準備：在測試資料庫中預先插入一個站點
+    site_service = test_container.site_service()
+    site_service.add_site(domain="https://sync-test.com", name="Sync Test Site")
+
+    result = runner.invoke(
+        app,
+        ["sync", "daily", "--site-id", "1", "--days", "3"],
+        obj=test_container,
+    )
+
+    assert result.exit_code == 0
+    # 驗證 run_sync 方法被以正確的參數呼叫了一次
+    mock_run_sync.assert_called_once_with(
+        all_sites=False,
+        site_id=1,
+        days=3,
+        sync_mode=SyncMode.SKIP,  # 注意這裡是 SyncMode 枚舉，不是字串
+    )
+
+
+def test_analyze_report_command(test_app_runner, mocker):
+    """測試 `analyze report` 命令。"""
+    runner, test_container = test_app_runner
+
+    # 模擬 AnalysisService 的方法
+    mock_generate_summary = mocker.patch(
+        "src.services.analysis_service.AnalysisService.generate_performance_summary"
+    )
+    # 讓被模擬的方法返回一個簡單的字串
+    mock_generate_summary.return_value = "Mocked performance report"
+
+    # 準備：在測試資料庫中預先插入一個站點
+    site_service = test_container.site_service()
+    site_service.add_site(domain="https://analysis-test.com", name="Analysis Test Site")
+
+    result = runner.invoke(
+        app,
+        ["analyze", "report", "1", "--days", "14"],
+        obj=test_container,
+    )
+
+    assert result.exit_code == 0
+    # 驗證模擬的方法被正確呼叫
+    mock_generate_summary.assert_called_once_with(1, 14)
+    # 驗證 CLI 命令的輸出包含了模擬方法返回的內容
+    assert "Mocked performance report" in result.stdout

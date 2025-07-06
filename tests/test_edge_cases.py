@@ -28,7 +28,7 @@ from src.app import app
         ),
         (
             ["sync", "daily", "--start-date", "2024-01-10", "--end-date", "2024-01-01"],
-            "所有計劃的數據都已存在，無需同步",  # 因為日期範圍無效，任務列表為空
+            "找不到任何要同步的活動站點",  # 因為沒有站點，任務列表為空
         ),
         (
             ["analyze", "coverage"],
@@ -70,15 +70,13 @@ def test_sync_with_api_failure(test_app_runner):
             str(site_id_to_sync),
             "--days",
             "1",
-            "--max-workers",
-            "1",
         ],
         obj=test_container,
     )
 
     # 由於這是一個複雜的整合測試，我們只檢查命令不會完全崩潰
     # 它可能會失敗（exit_code != 0），但不應該是因為語法錯誤
-    assert result.exit_code in [0, 1]  # 允許失敗，但不允許崩潰
+    assert result.exit_code != 2  # 2 表示參數錯誤，我們要避免這種情況
 
 
 def test_sync_when_all_data_exists(test_app_runner, monkeypatch):

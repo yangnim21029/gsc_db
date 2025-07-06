@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="gsc_service_banner.jpg" alt="GSC Database Manager Banner" width="100%">
+</p>
+
 # GSC Database Manager
 
 <p align="center">
@@ -72,6 +76,18 @@ pipx install poetry
     # 執行認證流程
     just auth
     ```
+
+    **⚠️ 重要提醒：OAuth 認證流程說明**
+
+    當您執行 `just auth` 時，系統會：
+
+    1. 提供一個 Google 授權 URL，請在瀏覽器中打開
+    2. 完成授權後，Google 會重定向到 `http://localhost:8000/auth/callback`
+    3. **這個頁面會顯示「無法連上這個網站」- 這是正常的！**
+    4. 請從瀏覽器地址欄複製 `code=` 後面的完整授權碼
+    5. 將授權碼貼回終端機以完成認證
+
+    這是一個**手動複製授權碼**的認證流程，不需要啟動本地服務器。
 
 ## 🎯 基本用法
 

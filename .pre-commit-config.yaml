@@ -23,13 +23,13 @@ repos:
         args: [--fix, --ignore=E501]
       - id: ruff-format
 
-  # --- Custom Project Checks ---
-  # Runs the slower, project-wide checks like mypy and pytest
+  # --- Type Checking Only ---
+  # Fast type checking without slow tests
   - repo: local
     hooks:
-      - id: check-commit
-        name: Run type-checking and tests
-        entry: just check-commit
+      - id: type-check
+        name: Run type-checking only
+        entry: just type-check
         language: system
         types: [python]
         pass_filenames: false

@@ -71,12 +71,14 @@ sync-site site_id days='7':
 
 ## 迴圈同步多個網站。 用法: `just sync-multiple "1 3 5"`
 sync-multiple site_list:
-    @echo "🚀 開始批次同步網站: [{{site_list}}]"
-    @for site_id in {{site_list}}; do \
-     echo "---"; \
-     just sync-site "$$site_id"; \
-     done
-    @echo "✅ 所有指定網站的批次同步已完成。"
+    #!/bin/bash
+    echo "🚀 開始批次同步網站: [{{site_list}}]"
+    for site in {{site_list}}; do
+        echo "---"
+        echo "🔄 正在為網站 ID '$site' 同步過去 '7' 天的資料..."
+        poetry run gsc-cli sync daily --site-id $site --days 7
+    done
+    echo "✅ 所有指定網站的批次同步已完成。"
 
 ## 使用自訂參數執行通用的同步指令。
 sync-custom *ARGS:

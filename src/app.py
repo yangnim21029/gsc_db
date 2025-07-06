@@ -28,7 +28,7 @@ web_api.container = container
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context):
+def callback(ctx: typer.Context):
     """
     應用程式主入口點和回呼函數。
 
@@ -61,5 +61,10 @@ app.add_typer(commands.sync_app, name="sync")
 app.add_typer(commands.analyze_app, name="analyze")
 
 
-# if __name__ == "__main__":
-#     app()
+def main():
+    """Entry point for the gsc-cli command."""
+    app()
+
+
+if __name__ == "__main__":
+    main()

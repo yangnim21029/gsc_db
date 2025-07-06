@@ -66,7 +66,7 @@ class RetrySettings(BaseModel):
 class SyncSettings(BaseModel):
     """資料同步相關設定"""
 
-    max_workers: int = 4
+    max_workers: int = 2  # 降低併發數以減少資料庫鎖定問題
 
 
 class GscSettings(BaseModel):

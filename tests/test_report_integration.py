@@ -54,18 +54,16 @@ def test_cli_report_generation(test_app_runner):
         [
             "analyze",
             "report",
-            "--site-id",
-            str(site_id),
-            "--output-path",
-            "test_report.md",
-            "--no-plots",
+            str(site_id),  # site_id 作為位置參數
+            "--days",
+            "7",
         ],
         obj=test_container,
     )
 
     # 檢查命令是否成功
     assert result.exit_code == 0
-    assert "報告成功生成" in result.stdout or "報告已生成" in result.stdout
+    assert "過去 7 天網站 ID" in result.stdout
 
 
 def test_cli_report_help(test_app_runner):
@@ -73,4 +71,4 @@ def test_cli_report_help(test_app_runner):
     runner, test_container = test_app_runner
     result = runner.invoke(app, ["analyze", "report", "--help"], obj=test_container)
     assert result.exit_code == 0
-    assert "生成指定站點的 GSC 綜合表現報告" in result.stdout
+    assert "為指定站點生成性能摘要報告" in result.stdout

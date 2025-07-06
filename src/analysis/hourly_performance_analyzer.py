@@ -7,7 +7,6 @@ GSC 每小時表現分析工具
 
 import argparse
 import logging
-import sqlite3
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -139,43 +138,44 @@ HOURLY_COLORS = {
 class HourlyAnalyzer:
     """每小時數據分析器"""
 
-    def __init__(self, db_path: str = str(config.settings.paths.database_path)):
-        self.db_path = db_path or str(config.settings.paths.database_path)
+    def __init__(self, db: Database):
+        self.db = db
 
     def get_hourly_summary(self, days=7):
         """獲取每小時數據摘要"""
         try:
-            conn = sqlite3.connect(self.db_path)
-
-            # 獲取最新日期
-            cursor = conn.execute("SELECT MAX(date) FROM hourly_rankings")
-            latest_date_str = cursor.fetchone()[0]
-            if not latest_date_str:
+            latest_date = self.db.get_latest_date_from_table("hourly_rankings")
+            if not latest_date:
+                logger.warning("No hourly data found to analyze.")
                 return None
 
-            latest_date = datetime.strptime(latest_date_str, "%Y-%m-%d").date()
             start_date = latest_date - timedelta(days=days - 1)
 
-            query = """
-            SELECT
-                hour,
-                COUNT(*) as total_records,
-                COUNT(DISTINCT query) as unique_queries,
-                COUNT(DISTINCT date) as days_active,
-                SUM(clicks) as total_clicks,
-                SUM(impressions) as total_impressions,
-                AVG(position) as avg_position,
-                AVG(ctr) as avg_ctr
-            FROM hourly_rankings
-            WHERE date >= ? AND date <= ?
-            GROUP BY hour
-            ORDER BY hour
-            """
+            data = self.db.get_hourly_rankings(
+                start_date=start_date.strftime("%Y-%m-%d"),
+                end_date=latest_date.strftime("%Y-%m-%d"),
+            )
 
-            df = pd.read_sql_query(query, conn, params=(start_date, latest_date))
-            conn.close()
+            if not data:
+                return pd.DataFrame()
 
-            return df
+            df = pd.DataFrame(data)
+
+            # Perform aggregation in pandas
+            summary_df = (
+                df.groupby("hour")
+                .agg(
+                    total_records=("hour", "size"),
+                    unique_queries=("query", "nunique"),
+                    days_active=("date", "nunique"),
+                    total_clicks=("clicks", "sum"),
+                    total_impressions=("impressions", "sum"),
+                    avg_position=("position", "mean"),
+                    avg_ctr=("ctr", "mean"),
+                )
+                .reset_index()
+            )
+            return summary_df
 
         except Exception as e:
             logger.error(f"獲取每小時摘要錯誤: {e}")
@@ -184,34 +184,33 @@ class HourlyAnalyzer:
     def get_daily_hourly_heatmap(self, days=7):
         """獲取每日每小時熱力圖數據"""
         try:
-            conn = sqlite3.connect(self.db_path)
-
-            cursor = conn.execute("SELECT MAX(date) FROM hourly_rankings")
-            latest_date_str = cursor.fetchone()[0]
-            if not latest_date_str:
+            latest_date = self.db.get_latest_date_from_table("hourly_rankings")
+            if not latest_date:
                 return None
 
-            latest_date = datetime.strptime(latest_date_str, "%Y-%m-%d").date()
             start_date = latest_date - timedelta(days=days - 1)
 
-            query = """
-            SELECT
-                date,
-                hour,
-                COUNT(*) as records,
-                SUM(clicks) as clicks,
-                SUM(impressions) as impressions,
-                AVG(position) as avg_position
-            FROM hourly_rankings
-            WHERE date >= ? AND date <= ?
-            GROUP BY date, hour
-            ORDER BY date, hour
-            """
+            data = self.db.get_hourly_rankings(
+                start_date=start_date.strftime("%Y-%m-%d"),
+                end_date=latest_date.strftime("%Y-%m-%d"),
+            )
 
-            df = pd.read_sql_query(query, conn, params=(start_date, latest_date))
-            conn.close()
+            if not data:
+                return pd.DataFrame()
 
-            return df
+            df = pd.DataFrame(data)
+
+            heatmap_df = (
+                df.groupby(["date", "hour"])
+                .agg(
+                    records=("hour", "size"),
+                    clicks=("clicks", "sum"),
+                    impressions=("impressions", "sum"),
+                    avg_position=("position", "mean"),
+                )
+                .reset_index()
+            )
+            return heatmap_df
 
         except Exception as e:
             logger.error(f"獲取熱力圖數據錯誤: {e}")
@@ -250,7 +249,7 @@ class HourlyAnalyzer:
             return "中午 (12-17)"
         elif 18 <= hour <= 23:
             return "晚上 (18-23)"
-        else:
+        else:  # 0-5
             return "深夜 (0-5)"
 
     def plot_hourly_trends(self, days=7, save_path=None):
@@ -587,98 +586,127 @@ class HourlyAnalyzer:
             return None
 
     def generate_hourly_report(self, days=7, output_path="hourly_report.md"):
-        """生成每小時數據報告"""
-        try:
-            # 基本統計
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.execute("SELECT COUNT(*) FROM hourly_rankings")
-            total_records = cursor.fetchone()[0]
+        """生成每小時數據分析報告"""
+        report_parts = []
+        summary_df = self.get_hourly_summary(days)
 
-            cursor = conn.execute("SELECT COUNT(DISTINCT date) FROM hourly_rankings")
-            total_days = cursor.fetchone()[0]
+        report_parts.append(f"# 每小時數據分析報告 (最近 {days} 天)")
+        report_parts.append(f"報告生成時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-            cursor = conn.execute("SELECT COUNT(DISTINCT query) FROM hourly_rankings")
-            unique_queries = cursor.fetchone()[0]
+        if summary_df is None or summary_df.empty:
+            report_parts.append("\n**沒有足夠的數據生成報告。**")
+            Path(output_path).write_text("\n".join(report_parts), encoding="utf-8")
+            return
 
-            cursor = conn.execute("SELECT MIN(date), MAX(date) FROM hourly_rankings")
-            date_range = cursor.fetchone()
+        # 基本統計
+        total_records = summary_df["total_records"].sum()
+        total_clicks = summary_df["total_clicks"].sum()
+        total_impressions = summary_df["total_impressions"].sum()
 
-            # 每小時摘要
-            df = self.get_hourly_summary(days)
+        report_parts.append("\n## 總體摘要")
+        report_parts.append(f"- 總記錄數: {total_records:,}")
+        report_parts.append(f"- 總點擊數: {total_clicks:,}")
+        report_parts.append(f"- 總曝光數: {total_impressions:,}")
 
-            # 生成報告內容
-            report_content = f"""# GSC 每小時數據分析報告
+        # 表格數據
+        report_parts.append("\n## 每小時詳細數據")
+        report_parts.append(summary_df.to_markdown(index=False))
 
-## 📊 數據概覽
+        # 高峰時段分析
+        _, period_stats = self.get_peak_hours_analysis(days)
+        if period_stats is not None:
+            report_parts.append("\n## 高峰時段分析")
+            report_parts.append(period_stats.to_markdown(index=False))
 
-- **總記錄數**: {total_records:,}
-- **覆蓋天數**: {total_days}
-- **獨特關鍵字**: {unique_queries:,}
-- **日期範圍**: {date_range[0]} 至 {date_range[1]}
+        # 寫入文件
+        Path(output_path).write_text("\n".join(report_parts), encoding="utf-8")
+        logger.info(f"報告已生成: {output_path}")
 
-## 🎯 分析期間
+    def analyze_and_display_coverage(
+        self, all_sites: bool = False, site_id: Optional[int] = None, output_csv: bool = False
+    ):
+        """分析並顯示數據覆蓋率"""
 
-本報告分析最近 **{days} 天** 的每小時表現。
+        from ..utils.rich_console import console
 
-## 📈 每小時表現摘要
+        console.print("[bold cyan]🔍 開始分析數據覆蓋率...[/bold cyan]")
 
-| 小時 | 點擊數 | 展示數 | 關鍵字數 | 平均排名 | CTR |
-|------|--------|--------|----------|----------|-----|
-"""
+        sites_to_check = []
+        if all_sites:
+            sites_to_check = self.db.get_sites(active_only=True)
+        elif site_id:
+            site = self.db.get_site_by_id(site_id)
+            if site:
+                sites_to_check.append(site)
 
-            if df is not None and not df.empty:
-                for _, row in df.iterrows():
-                    hour_val = row["hour"]
-                    try:
-                        hour_val = int(round(float(hour_val)))
-                    except Exception:
-                        hour_val = 0
-                    report_content += (
-                        f"| {hour_val:02d}:00 | {int(row['total_clicks']):,} | "
-                        f"{int(row['total_impressions']):,} | "
-                        f"{int(row['unique_queries']):,} | "
-                        f"{row['avg_position']:.1f} | {row['avg_ctr']:.2%} |\n"
-                    )
+        if not sites_to_check:
+            console.print("[yellow]⚠️ 未找到要分析的站點。[/yellow]")
+            return
 
-                # 添加統計摘要
-                peak_hour = df.loc[df["total_clicks"].idxmax()]
-                low_hour = df.loc[df["total_clicks"].idxmin()]
+        for site in sites_to_check:
+            self._print_coverage_for_site(self.db, site)
+            # Future: add data to coverage_results for CSV export
 
-                report_content += f"""
+    def _print_coverage_for_site(self, db: Database, site: Dict[str, Any]):
+        """為單個站點打印數據覆蓋情況。"""
 
-## 🏆 高峰時段分析
+        from rich.panel import Panel
+        from rich.table import Table
 
-- **高峰時段**: {peak_hour["hour"]:02d}:00 ({peak_hour["total_clicks"]:,}次點擊)
-- **低谷時段**: {low_hour["hour"]:02d}:00 ({low_hour["total_clicks"]:,}次點擊)
-- **點擊總量**: {df["total_clicks"].sum():,}
-- **曝光總量**: {df["total_impressions"].sum():,}
-- **關鍵字總數**: {df["unique_queries"].sum():,}
-"""
-            else:
-                report_content += "| - | 無數據 | - | - | - | - |\n"
+        from ..utils.rich_console import console
 
-            report_content += f"""
+        console.print(Panel(f"[bold]站點: {site['name']} (ID: {site['id']})[/bold]", expand=False))
 
-## 📅 報告生成時間
+        daily_coverage = db.get_daily_data_coverage(site["id"])
+        hourly_coverage = db.get_hourly_data_coverage(site["id"])
 
-{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        table = Table(title="數據覆蓋情況")
+        table.add_column("數據類型", style="cyan")
+        table.add_column("總記錄數", style="magenta")
+        table.add_column("最早日期", style="green")
+        table.add_column("最晚日期", style="green")
+        table.add_column("覆蓋率", style="yellow")
 
----
+        if daily_coverage:
+            table.add_row(
+                "每日數據",
+                str(daily_coverage.get("total_records", "N/A")),
+                str(daily_coverage.get("first_date", "N/A")),
+                str(daily_coverage.get("last_date", "N/A")),
+                self._calculate_coverage_percentage(daily_coverage) or "N/A",
+            )
+        else:
+            table.add_row("每日數據", "[red]無[/red]", "N/A", "N/A", "N/A")
 
-*此報告由 GSC 每小時數據分析工具自動生成*
-"""
+        if hourly_coverage:
+            table.add_row(
+                "每小時數據",
+                str(hourly_coverage.get("total_records", "N/A")),
+                str(hourly_coverage.get("first_date", "N/A")),
+                str(hourly_coverage.get("last_date", "N/A")),
+                self._calculate_coverage_percentage(hourly_coverage) or "N/A",
+            )
+        else:
+            table.add_row("每小時數據", "[red]無[/red]", "N/A", "N/A", "N/A")
 
-            # 保存報告
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(report_content)
+        console.print(table)
 
-            conn.close()
-            logger.info(f"📄 每小時報告已保存到: {output_path}")
-            return output_path
+    def _calculate_coverage_percentage(self, coverage_data: Dict[str, Any]) -> Optional[str]:
+        """計算並格式化數據覆蓋率百分比"""
+        first_date_str = coverage_data.get("first_date")
+        last_date_str = coverage_data.get("last_date")
+        unique_dates = coverage_data.get("unique_dates", 0)
 
-        except Exception as e:
-            logger.error(f"生成每小時報告失敗: {e}")
-            return None
+        if first_date_str and last_date_str and unique_dates > 0:
+            try:
+                first_date = datetime.strptime(first_date_str, "%Y-%m-%d").date()
+                last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
+                total_days = (last_date - first_date).days + 1
+                percentage = (unique_dates / total_days) * 100 if total_days > 0 else 0
+                return f"{percentage:.1f}% ({unique_dates} / {total_days} 天)"
+            except (ValueError, TypeError):
+                return None
+        return None
 
 
 def _generate_hourly_trends_plot(
@@ -757,28 +785,37 @@ ANALYSIS_REGISTRY = {
 }
 
 
-def _fetch_hourly_data_gemini(conn, days: int, site_url: Optional[str] = None) -> pd.DataFrame:
-    """
-    Fetches and aggregates performance data by hour from the database (Gemini style).
-    This query assumes the 'date' column is a format that SQLite's strftime can parse
-    (e.g., 'YYYY-MM-DD HH:MM:SS').
-    """
-    end_date = datetime.now().date()
-    start_date = end_date - timedelta(days=days)
-    query = """
-    SELECT
-        CAST(strftime('%H', date) AS INTEGER) as hour,
-        SUM(clicks) as total_clicks,
-        SUM(impressions) as total_impressions
-    FROM gsc_data
-    WHERE date(date) >= ? AND date(date) <= ?
-    """
-    params = [str(start_date), str(end_date)]
+def _fetch_hourly_data_gemini(
+    db: Database, days: int, site_url: Optional[str] = None
+) -> pd.DataFrame:
+    """使用 Database 服務從資料庫獲取每小時數據。"""
+
+    site_id = None
     if site_url:
-        query += " AND site_url = ?"
-        params.append(site_url)
-    query += " GROUP BY hour ORDER BY hour ASC"
-    return pd.read_sql_query(query, conn, params=tuple(params))
+        site = db.get_site_by_domain(site_url)
+        if site:
+            site_id = site["id"]
+        else:
+            logger.warning(f"Gemini Analysis: Site not found for URL {site_url}")
+            return pd.DataFrame()
+
+    latest_date = db.get_latest_date_from_table("hourly_rankings", site_id=site_id)
+    if not latest_date:
+        logger.warning("Gemini Analysis: No hourly data found.")
+        return pd.DataFrame()
+
+    start_date = latest_date - timedelta(days=days - 1)
+
+    data = db.get_hourly_rankings(
+        site_id=site_id,
+        start_date=start_date.strftime("%Y-%m-%d"),
+        end_date=latest_date.strftime("%Y-%m-%d"),
+    )
+
+    if not data:
+        return pd.DataFrame()
+
+    return pd.DataFrame(data)
 
 
 def _generate_hourly_plot_gemini(
@@ -811,209 +848,170 @@ def _generate_hourly_plot_gemini(
 
 
 def run_hourly_analysis(
+    analyzer: HourlyAnalyzer,
     analysis_type: str = "trends",
     days: int = 7,
     output_path: Optional[str] = None,
     include_plots: bool = True,
     plot_save_dir: Optional[str] = None,
-    db_path: str = str(config.settings.paths.database_path),
 ) -> Dict[str, Any]:
     """
-    運行每小時數據分析
-
-    Args:
-        analysis_type: 分析類型 ('trends', 'heatmap', 'peaks', 'report', 'all')
-        days: 分析天數
-        output_path: 報告輸出路徑
-        include_plots: 是否包含圖表
-        plot_save_dir: 圖表保存目錄
-        db_path: 數據庫路徑
-
-    Returns:
-        包含分析結果的字典
+    執行每小時數據分析的核心函數。
+    :param analyzer: 已經初始化的 HourlyAnalyzer 實例。
+    :param analysis_type: 要執行的分析類型 ('trends', 'heatmap', 'peak', 'report', 'coverage')。
+    :param days: 分析涵蓋的天數。
+    :param output_path: 報告或CSV的輸出路徑。
+    :param include_plots: 是否生成圖表。
+    :param plot_save_dir: 圖表保存目錄。
+    :return: 分析結果字典。
     """
-    result: Dict[str, Any] = {
-        "success": False,
-        "analysis_type": analysis_type,
-        "plots_generated": [],
-        "report_path": None,
-        "errors": [],
-    }
+    result: Dict[str, Any] = {"status": "success", "files": [], "errors": []}
 
-    try:
-        logger.info(f"開始每小時數據分析，類型: {analysis_type}，天數: {days}")
+    logger.info(f"執行分析類型: {analysis_type}, 最近 {days} 天")
 
-        # 初始化分析器
-        analyzer = HourlyAnalyzer(db_path)
-
-        # 檢查數據庫是否存在
-        if not Path(db_path).exists():
-            error_msg = f"數據庫文件不存在: {db_path}"
-            logger.error(error_msg)
-            result["errors"].append(error_msg)
-            return result
-
-        # 檢查每小時數據表是否存在
-        try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='hourly_rankings'"
-            )
-            if not cursor.fetchone():
-                error_msg = "每小時數據表 'hourly_rankings' 不存在"
-                logger.error(error_msg)
-                result["errors"].append(error_msg)
-                conn.close()
-                return result
-            conn.close()
-        except Exception as e:
-            error_msg = f"檢查數據庫結構失敗: {e}"
-            logger.error(error_msg)
-            result["errors"].append(error_msg)
-            return result
-
-        # 確定要運行的分析任務
-        analyses_to_run = []
-        if analysis_type == "all":
-            analyses_to_run = list(ANALYSIS_REGISTRY.keys())
-        elif analysis_type in ANALYSIS_REGISTRY:
-            analyses_to_run = [analysis_type]
-        else:
-            error_msg = (
-                f"無效的分析類型: {analysis_type}. "
-                f"可用類型: {list(ANALYSIS_REGISTRY.keys()) + ['all']}"
-            )
-            logger.error(error_msg)
-            result["errors"].append(error_msg)
-            return result
-
-        # 執行分析任務
-        for name in analyses_to_run:
-            task = ANALYSIS_REGISTRY[name]
-
-            if task["type"] == "plot" and include_plots:
-                plot_dir = Path(plot_save_dir) if plot_save_dir else config.BASE_DIR / "assets"
-                plot_dir.mkdir(exist_ok=True)
-                save_path = plot_dir / str(task["filename"])
-
-                func: Callable = task["function"]  # type: ignore
-                plot_result = func(analyzer, days, str(save_path))
-                if plot_result:
-                    result["plots_generated"].append(str(save_path))
-
-            elif task["type"] == "report":
-                report_save_path = output_path
-                if not report_save_path:
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    report_save_path = str(
-                        config.settings.paths.report_dir / f"hourly_report_{timestamp}.md"
-                    )
-
-                func: Callable = task["function"]  # type: ignore
-                report_result = func(analyzer, days, str(report_save_path))
-                if report_result:
-                    result["report_path"] = str(report_save_path)
-
-        result["success"] = True
-        logger.info(f"每小時分析完成: {analysis_type}")
-
-        # 添加數據摘要
-        df = analyzer.get_hourly_summary(days)
-        if df is not None and not df.empty:
-            result["summary"] = {
-                "total_clicks": int(df["total_clicks"].sum()),
-                "total_impressions": int(df["total_impressions"].sum()),
-                "unique_queries": int(df["unique_queries"].sum()),
-                "peak_hour": int(float(df.loc[df["total_clicks"].idxmax()]["hour"])),  # type: ignore
-                "low_hour": int(float(df.loc[df["total_clicks"].idxmin()]["hour"])),  # type: ignore
-            }
-
+    if analysis_type == "coverage":
+        analyzer.analyze_and_display_coverage(all_sites=True)
         return result
 
-    except Exception as e:
-        error_msg = f"每小時分析時發生錯誤: {e}"
-        logger.error(error_msg)
+    # 檢查數據
+    summary_df = analyzer.get_hourly_summary(days=days)
+    if summary_df is None or summary_df.empty:
+        error_msg = "沒有足夠的每小時數據進行分析。"
+        logger.warning(error_msg)
+        result["status"] = "failed"
         result["errors"].append(error_msg)
         return result
 
+    if include_plots:
+        save_dir = Path(plot_save_dir or config.settings.paths.report_dir)
+        save_dir.mkdir(exist_ok=True)
 
-def run_hourly_analysis_gemini(site_url: Optional[str] = None, days: int = 30):
-    print(
-        f"Running hourly analysis for site: {site_url or 'All Sites'} for the last {days} days..."
+        # 統一文件名前綴
+        filename_prefix = f"hourly_{datetime.now().strftime('%Y%m%d')}"
+
+        plot_functions: Dict[str, Callable] = {
+            "trends": _generate_hourly_trends_plot,
+            "heatmap": _generate_hourly_heatmap,
+            "peak": _generate_peak_analysis_plot,
+        }
+
+        if analysis_type in plot_functions:
+            plot_path = plot_functions[analysis_type](
+                analyzer, days, str(save_dir / f"{filename_prefix}_{analysis_type}.png")
+            )
+            if plot_path:
+                result["files"].append(plot_path)
+        elif analysis_type == "report":
+            # 報告也可能包含圖表
+            trends_path = _generate_hourly_trends_plot(
+                analyzer, days, str(save_dir / f"{filename_prefix}_trends.png")
+            )
+            heatmap_path = _generate_hourly_heatmap(
+                analyzer, days, str(save_dir / f"{filename_prefix}_heatmap.png")
+            )
+            if trends_path:
+                result["files"].append(trends_path)
+            if heatmap_path:
+                result["files"].append(heatmap_path)
+
+    if analysis_type == "report":
+        report_path = output_path or str(config.settings.paths.report_dir / "hourly_report.md")
+        _generate_hourly_report(analyzer, days, report_path)
+        result["files"].append(report_path)
+
+    logger.info("分析完成。")
+    return result
+
+
+def run_hourly_analysis_gemini(db: Database, site_url: Optional[str] = None, days: int = 30):
+    """
+    執行一個簡化的、由 Gemini 啟發的每小時數據分析。
+    :param db: Database 服務實例。
+    :param site_url: 要分析的單個站點 URL (可選)。
+    :param days: 分析天數。
+    """
+
+    from ..utils.rich_console import console
+
+    console.print(
+        f"[bold blue]🚀 Starting Gemini Hourly Analysis for "
+        f"{site_url or 'all sites'}...[/bold blue]"
     )
 
-    conn = Database().get_connection()
-    try:
-        hourly_data = _fetch_hourly_data_gemini(conn, days, site_url)
-        if hourly_data.empty:
-            print("⚠️ No hourly data found for the specified period.")
-            return
-        assets_dir = Path("assets")
-        timestamp = datetime.now().strftime("%Y_%B")
-        site_name = Path(site_url).stem if site_url else "Overall"
-        filename_prefix = f"{timestamp}_{site_name}"
-        plot_path = _generate_hourly_plot_gemini(hourly_data, assets_dir, filename_prefix)
-        print(f"✅ Hourly trends plot saved to: {plot_path}")
-        peak_hour_data = hourly_data.loc[hourly_data["total_clicks"].idxmax()]
-        print(
-            f"📈 Peak Performance Hour: {int(float(peak_hour_data['hour'])):02d}:00 UTC "  # type: ignore
-            f"with {int(float(peak_hour_data['total_clicks'])):,} clicks."  # type: ignore
-        )
-    except Exception as e:
-        print(f"❌ An error occurred during hourly analysis: {e}")
-    finally:
-        if conn:
-            conn.close()
+    # 1. Fetch data using the refactored function
+    df = _fetch_hourly_data_gemini(db, days, site_url)
+
+    if df.empty:
+        console.print("[yellow]No data to analyze. Exiting.[/yellow]")
+        return
+
+    # 2. Generate Plot
+    output_dir = config.settings.paths.report_dir
+    output_dir.mkdir(exist_ok=True)
+    filename_prefix = f"gemini_hourly_{site_url.replace('.', '_') if site_url else 'all'}"
+    plot_path = _generate_hourly_plot_gemini(df, output_dir, filename_prefix)
+
+    if plot_path:
+        console.print(f"[green]✔ Plot generated successfully at: {plot_path}[/green]")
+    else:
+        console.print("[red]❌ Failed to generate plot.[/red]")
+
+    # 3. Print summary
+    console.print("\n[bold]Data Summary:[/bold]")
+    console.print(df.head())
 
 
 def main():
-    """主函數 - 用於直接運行腳本"""
+    """CLI 入口點"""
     parser = argparse.ArgumentParser(description="GSC 每小時數據分析工具")
     parser.add_argument(
-        "--type",
-        choices=["trends", "heatmap", "peaks", "report", "all"],
+        "analysis_type",
+        nargs="?",
         default="trends",
-        help="分析類型",
+        choices=["trends", "heatmap", "peak", "report", "coverage", "gemini"],
+        help="要執行的分析類型 (預設: trends)",
     )
-    parser.add_argument("--days", type=int, default=7, help="分析天數")
-    parser.add_argument("--output", help="報告輸出路徑")
-    parser.add_argument("--no-plots", action="store_true", help="不生成圖表")
-    parser.add_argument("--plot-dir", default="assets", help="圖表保存目錄")
-    parser.add_argument("--db", default="gsc_data.db", help="數據庫文件路徑")
-
+    parser.add_argument("--days", type=int, default=7, help="分析最近 N 天的數據 (預設: 7)")
+    parser.add_argument("--output", type=str, help="報告或圖表的輸出路徑")
+    parser.add_argument("--site-url", type=str, help="針對特定站點URL運行分析 (主要用於 gemini)")
     args = parser.parse_args()
 
-    # 調用主函數
-    result = run_hourly_analysis(
-        analysis_type=args.type,
-        days=args.days,
-        output_path=args.output,
-        include_plots=not args.no_plots,
-        plot_save_dir=args.plot_dir,
-        db_path=args.db,
-    )
+    try:
+        from ..containers import Container
 
-    if result["success"]:
-        print(f"✅ 每小時分析成功: {result['analysis_type']}")
-        if result["plots_generated"]:
-            print(f"📊 生成的圖表: {', '.join(result['plots_generated'])}")
-        if result["report_path"]:
-            print(f"📄 報告路徑: {result['report_path']}")
-        if "summary" in result:
-            summary = result["summary"]
-            print(
-                f"📈 數據摘要: {summary['total_clicks']:,} 點擊, "
-                f"{summary['total_impressions']:,} 曝光"
-            )
-            print(f"⏰ 高峰時段: {summary['peak_hour']}:00, 低谷時段: {summary['low_hour']}:00")
-    else:
-        print("❌ 每小時分析失敗")
-        for error in result["errors"]:
-            print(f"  - {error}")
-        return 1
+        container = Container()
+        container.wire(modules=[__name__])
 
-    return 0
+        # For gemini analysis, we pass the db service directly
+        if args.analysis_type == "gemini":
+            db_service = container.database()
+            run_hourly_analysis_gemini(db=db_service, site_url=args.site_url, days=args.days)
+            return
+
+        analyzer = container.hourly_performance_analyzer()
+
+        result = run_hourly_analysis(
+            analyzer=analyzer,
+            analysis_type=args.analysis_type,
+            days=args.days,
+            output_path=args.output,
+        )
+
+        if result["status"] == "success":
+            print("\n[bold green]✅ 分析成功完成！[/bold green]")
+            if result.get("files"):
+                print("生成文件:")
+                for f in result["files"]:
+                    print(f"- {f}")
+        else:
+            print("\n[bold red]❌ 分析過程中出現錯誤:[/bold red]")
+            if result.get("errors"):
+                for err in result["errors"]:
+                    print(f"- {err}")
+
+    except Exception as e:
+        logger.error(f"分析過程中發生未預期錯誤: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
-    exit(main())
+    main()

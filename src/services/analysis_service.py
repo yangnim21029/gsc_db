@@ -65,10 +65,12 @@ class AnalysisService:
             ORDER BY total_{metric} DESC
             LIMIT ?
         """
-        with self.db.get_connection() as conn:
+        with self.db._lock:
             return [
                 dict(row)
-                for row in conn.execute(query, (site_id, start_date, end_date, limit)).fetchall()
+                for row in self.db._connection.execute(
+                    query, (site_id, start_date, end_date, limit)
+                ).fetchall()
             ]
 
     def get_site_performance_summary(self, site_id: int, days: int) -> Dict[str, Any]:
@@ -87,8 +89,8 @@ class AnalysisService:
             FROM gsc_performance_data
             WHERE site_id = ? AND date BETWEEN ? AND ?
         """
-        with self.db.get_connection() as conn:
-            summary = conn.execute(query, (site_id, start_date, end_date)).fetchone()
+        with self.db._lock:
+            summary = self.db._connection.execute(query, (site_id, start_date, end_date)).fetchone()
             return dict(summary) if summary else {}
 
     def get_daily_performance_summary(self, site_id: int, days: int) -> List[Dict[str, Any]]:
@@ -110,9 +112,12 @@ class AnalysisService:
             GROUP BY date
             ORDER BY date
         """
-        with self.db.get_connection() as conn:
+        with self.db._lock:
             return [
-                dict(row) for row in conn.execute(query, (site_id, start_date, end_date)).fetchall()
+                dict(row)
+                for row in self.db._connection.execute(
+                    query, (site_id, start_date, end_date)
+                ).fetchall()
             ]
 
     def get_top_pages(
@@ -140,10 +145,12 @@ class AnalysisService:
             ORDER BY total_{metric} DESC
             LIMIT ?
         """
-        with self.db.get_connection() as conn:
+        with self.db._lock:
             return [
                 dict(row)
-                for row in conn.execute(query, (site_id, start_date, end_date, limit)).fetchall()
+                for row in self.db._connection.execute(
+                    query, (site_id, start_date, end_date, limit)
+                ).fetchall()
             ]
 
     def get_overall_summary(self, site_id: int, days: int) -> Dict[str, Any]:
@@ -163,8 +170,8 @@ class AnalysisService:
             FROM gsc_performance_data
             WHERE site_id = ? AND date BETWEEN ? AND ?
         """
-        with self.db.get_connection() as conn:
-            summary = conn.execute(query, (site_id, start_date, end_date)).fetchone()
+        with self.db._lock:
+            summary = self.db._connection.execute(query, (site_id, start_date, end_date)).fetchone()
             return dict(summary) if summary else {}
 
     def get_keyword_trend(
@@ -180,10 +187,10 @@ class AnalysisService:
             WHERE site_id = ? AND query = ? AND date BETWEEN ? AND ?
             ORDER BY date
         """
-        with self.db.get_connection() as conn:
+        with self.db._lock:
             return [
                 dict(row)
-                for row in conn.execute(
+                for row in self.db._connection.execute(
                     query, (site_id, query_text, start_date, end_date)
                 ).fetchall()
             ]
@@ -222,8 +229,11 @@ class AnalysisService:
 
         base_query += " ORDER BY date"
 
-        with self.db.get_connection() as conn:
-            return [dict(row) for row in conn.execute(base_query, tuple(params)).fetchall()]
+        with self.db._lock:
+            return [
+                dict(row)
+                for row in self.db._connection.execute(base_query, tuple(params)).fetchall()
+            ]
 
     def compare_performance_periods(
         self,
@@ -256,13 +266,17 @@ class AnalysisService:
                 SELECT {group_by} AS item, SUM(clicks) AS p1_clicks,
                        SUM(impressions) AS p1_impressions, AVG(position) AS p1_position,
                        AVG(ctr) AS p1_ctr
-                FROM gsc_performance_data WHERE site_id = ? AND date BETWEEN ? AND ? GROUP BY {group_by}
+                FROM gsc_performance_data
+                WHERE site_id = ? AND date BETWEEN ? AND ?
+                GROUP BY {group_by}
             ),
             period2_data AS (
                 SELECT {group_by} AS item, SUM(clicks) AS p2_clicks,
                        SUM(impressions) AS p2_impressions, AVG(position) AS p2_position,
                        AVG(ctr) AS p2_ctr
-                FROM gsc_performance_data WHERE site_id = ? AND date BETWEEN ? AND ? GROUP BY {group_by}
+                FROM gsc_performance_data
+                WHERE site_id = ? AND date BETWEEN ? AND ?
+                GROUP BY {group_by}
             )
             SELECT
                 COALESCE(p1.item, p2.item) AS item,
@@ -271,7 +285,8 @@ class AnalysisService:
                 (COALESCE(p2.p2_clicks, 0) - COALESCE(p1.p1_clicks, 0)) AS clicks_change,
                 COALESCE(p1.p1_impressions, 0) AS period1_impressions,
                 COALESCE(p2.p2_impressions, 0) AS period2_impressions,
-                (COALESCE(p2.p2_impressions, 0) - COALESCE(p1.p1_impressions, 0)) AS impressions_change,
+                (COALESCE(p2.p2_impressions, 0) - COALESCE(p1.p1_impressions, 0))
+                AS impressions_change,
                 COALESCE(p1.p1_position, 0) AS period1_position,
                 COALESCE(p2.p2_position, 0) AS period2_position,
                 (COALESCE(p2.p2_position, 999) - COALESCE(p1.p1_position, 999)) AS position_change,
@@ -292,8 +307,8 @@ class AnalysisService:
             period2_end,
             limit,
         )
-        with self.db.get_connection() as conn:
-            return [dict(row) for row in conn.execute(query, params).fetchall()]
+        with self.db._lock:
+            return [dict(row) for row in self.db._connection.execute(query, params).fetchall()]
 
     def get_competitor_analysis(
         self, site_id: int, start_date: str, end_date: str, limit: int = 50
@@ -308,10 +323,12 @@ class AnalysisService:
             ORDER BY competitor_count DESC
             LIMIT ?
         """
-        with self.db.get_connection() as conn:
+        with self.db._lock:
             return [
                 dict(row)
-                for row in conn.execute(query, (site_id, start_date, end_date, limit)).fetchall()
+                for row in self.db._connection.execute(
+                    query, (site_id, start_date, end_date, limit)
+                ).fetchall()
             ]
 
     def get_seasonal_trends(
@@ -328,8 +345,11 @@ class AnalysisService:
             GROUP BY month
             ORDER BY month
         """
-        with self.db.get_connection() as conn:
-            return [dict(row) for row in conn.execute(query, (site_id, str(year))).fetchall()]
+        with self.db._lock:
+            return [
+                dict(row)
+                for row in self.db._connection.execute(query, (site_id, str(year))).fetchall()
+            ]
 
     def get_keyword_growth_analysis(
         self,
@@ -345,6 +365,64 @@ class AnalysisService:
         logger.warning("Keyword growth analysis is a simplified implementation.")
         # 在真實場景中，需要比較兩個時間段的數據
         return []
+
+    def generate_performance_summary(self, site_id: int, days: int) -> str:
+        """
+        為指定站點生成性能摘要報告（文字格式）。
+
+        Args:
+            site_id: 站點 ID
+            days: 要分析的天數
+
+        Returns:
+            格式化的文字報告
+        """
+        # 獲取基本統計信息
+        summary = self.get_site_performance_summary(site_id, days)
+        if not summary:
+            return f"站點 ID {site_id} 在過去 {days} 天內沒有數據。"
+
+        # 獲取頂級關鍵字和頁面
+        top_keywords = self.get_top_keywords(site_id, days, limit=10)
+        top_pages = self.get_top_pages(site_id, days, limit=10)
+
+        # 生成報告
+        report_lines = [
+            f"=== 站點 ID {site_id} 性能摘要 (過去 {days} 天) ===",
+            "",
+            "📊 整體統計:",
+            f"  總點擊數: {summary.get('total_clicks', 0):,}",
+            f"  總展示數: {summary.get('total_impressions', 0):,}",
+            f"  平均點擊率: {summary.get('avg_ctr', 0):.2%}",
+            f"  平均排名: {summary.get('avg_position', 0):.1f}",
+            "",
+        ]
+
+        if top_keywords:
+            report_lines.extend(
+                [
+                    "🔍 熱門關鍵字 (按點擊數排序):",
+                    *[
+                        f"  {i + 1}. {kw['query']} - {kw['total_clicks']} 次點擊"
+                        for i, kw in enumerate(top_keywords[:5])
+                    ],
+                    "",
+                ]
+            )
+
+        if top_pages:
+            report_lines.extend(
+                [
+                    "📄 熱門頁面 (按點擊數排序):",
+                    *[
+                        f"  {i + 1}. {page['page']} - {page['total_clicks']} 次點擊"
+                        for i, page in enumerate(top_pages[:5])
+                    ],
+                    "",
+                ]
+            )
+
+        return "\n".join(report_lines)
 
     def build_report(
         self,

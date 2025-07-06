@@ -16,18 +16,27 @@ from src.containers import Container
 from src.services.database import Database
 
 
+@pytest.fixture(scope="session")
+def runner():
+    """提供一個 Typer CliRunner 的實例，用於測試 CLI 命令。"""
+    return CliRunner()
+
+
 @pytest.fixture(scope="function")
 def test_db():
     """
-    建立一個在記憶體中的 SQLite 資料庫。
+    建立一個在記憶體中的 SQLite 資料庫，並注入一個鎖。
     作用域 (scope) 設定為 'function'，以確保每個測試函數都獲得一個
     獨立、乾淨的資料庫實例，這對於並行測試 (pytest-xdist) 至關重要。
     """
     # --- Setup ---
     db = Database(db_path=":memory:")
-    db.init_db()  # 確保所有表都已建立
+
+    # --- Yield the db instance to the test ---
     yield db
-    # --- Teardown (no action needed for in-memory db) ---
+
+    # --- Teardown ---
+    db.close_connection()
 
 
 @pytest.fixture
@@ -46,7 +55,7 @@ def test_app_runner(test_db, monkeypatch):
     from src.services.analysis_service import AnalysisService
     from src.services.site_service import SiteService
 
-    test_site_service = SiteService(test_db)
+    test_site_service = SiteService(test_db, mock_gsc_client)  # 注入 GSC 客戶端
     test_analysis_service = AnalysisService(test_db)
 
     # 3. 建立一個測試用的依賴注入容器，並覆寫其服務

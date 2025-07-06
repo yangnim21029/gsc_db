@@ -38,8 +38,8 @@ logger = logging.getLogger(__name__)
 
 def _check_existing_data(db: Database, site_id: int, date: str) -> bool:
     """檢查指定站點和日期是否已有數據"""
-    with db.get_connection() as conn:
-        result = conn.execute(
+    with db._lock:
+        result = db._connection.execute(
             "SELECT COUNT(*) as count FROM gsc_performance_data WHERE site_id = ? AND date = ?",
             (site_id, date),
         ).fetchone()
@@ -84,7 +84,8 @@ def _sync_single_day(
             day_stats[key] += chunk_stats.get(key, 0)
 
     logger.info(
-        f"站點 [bold cyan]{site_name}[/bold cyan] 日期 [bold]{date}[/bold] - [green]同步成功[/green]"
+        f"站點 [bold cyan]{site_name}[/bold cyan] 日期 [bold]{date}[/bold] - "
+        f"[green]同步成功[/green]"
     )
     return day_stats
 
@@ -221,3 +222,34 @@ def run_sync(
                 progress.update(task_id, advance=1)
 
     _print_final_summary(total_stats)
+
+
+class BulkDataSynchronizer:
+    """Bulk data synchronizer wrapper class for dependency injection."""
+
+    def __init__(self, db: Database, gsc_client: GSCClient):
+        self.db = db
+        self.gsc_client = gsc_client
+
+    def run_sync(
+        self,
+        all_sites: bool = False,
+        site_id: Optional[int] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: int = 2,
+        sync_mode: SyncMode = SyncMode.OVERWRITE,
+        max_workers: int = 4,
+    ):
+        """Run the synchronization process."""
+        return run_sync(
+            db=self.db,
+            client=self.gsc_client,
+            all_sites=all_sites,
+            site_id=site_id,
+            start_date=start_date,
+            end_date=end_date,
+            days=days,
+            sync_mode=sync_mode,
+            max_workers=max_workers,
+        )

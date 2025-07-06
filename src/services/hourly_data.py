@@ -196,12 +196,14 @@ class HourlyDataHandler:
 
             # 保存到數據庫
             logger.info(
-                f"About to save {len(hourly_rankings)} hourly rankings (skipped {skipped_rows} rows)"
+                f"About to save {len(hourly_rankings)} hourly rankings "
+                f"(skipped {skipped_rows} rows)"
             )
             saved_count = self.database.save_hourly_ranking_data(hourly_rankings)
 
             logger.info(
-                f"Synced {saved_count} hourly records for {site_url} from {start_date} to {end_date}"
+                f"Synced {saved_count} hourly records for {site_url} "
+                f"from {start_date} to {end_date}"
             )
 
             return {

@@ -1,12 +1,12 @@
-# GSC-CLI
+# GSC Database Manager
 
 <p align="center">
-  您的個人 Google Search Console 數據倉庫與 AI 分析平台
+  企業級 Google Search Console 數據管理與分析工具
 </p>
 <p align="center">
-    <a href="https://github.com/your-username/gsc-cli/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/your-username/gsc-cli?style=flat-square"></a>
-    <a href="https://github.com/your-username/gsc-cli/actions/workflows/ci.yml"><img alt="CI Status" src="https://img.shields.io/github/actions/workflow/status/your-username/gsc-cli/ci.yml?branch=main&style=flat-square"></a>
+    <a href="https://github.com/your-username/gsc_db/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/your-username/gsc_db?style=flat-square"></a>
     <a href="https://python.org"><img alt="Python Version" src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square"></a>
+    <a href="https://github.com/astral-sh/ruff"><img alt="Ruff" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square"></a>
 </p>
 
 > **我們的使命：** 賦予開發者、行銷人員與網站主完全掌控其 Google Search Console 數據的能力。我們相信，長期的數據所有權是解鎖深度洞察、並為網站優化建構下一代 AI 驅動工具的關鍵。
@@ -15,111 +15,248 @@
 
 ## ✨ 核心功能
 
-- **長期數據所有權**: 打破 GSC 16 個月的數據保留限制，建立您自己的歷史數據檔案庫。
-- **自動化數據同步**: 定期擷取 GSC 數據（搜尋分析、網站地圖等）並儲存於本地 SQLite 資料庫。
-- **穩健的備份機制**: 自動建立資料庫的壓縮備份，並清理舊的備份。
-- **強大的命令列介面**: 易於使用的指令，涵蓋身份驗證、數據同步與日常維護。
-- **API 就緒**: 內建 FastAPI 伺服器，為您的 AI Agent 或 Web UI 提供數據接口。
-- **整合任務執行器**: 附帶預先配置好的 `justfile`，簡化開發與操作流程。
+- **長期數據所有權**: 打破 GSC 16 個月的數據保留限制，建立您自己的歷史數據檔案庫
+- **自動化數據同步**: 定期擷取 GSC 數據（搜尋分析、每小時數據、網站地圖等）並儲存於本地 SQLite 資料庫
+- **每小時精細數據**: 支援 GSC 的每小時數據 API，提供更精細的時間粒度分析
+- **穩健的備份機制**: 自動建立資料庫的壓縮備份，並清理舊的備份
+- **強大的命令列介面**: 易於使用的指令，涵蓋身份驗證、數據同步與日常維護
+- **API 就緒**: 內建 FastAPI 伺服器，為您的 AI Agent 或 Web UI 提供數據接口
+- **現代化開發工具**: 整合 Ruff、mypy、pytest、pre-commit hooks 等最佳實踐
+- **整合任務執行器**: 附帶預先配置好的 `justfile`，簡化開發與操作流程
 
 ## 🚀 快速開始
 
 ### 前提條件
 
-本專案使用 `just` 作為指令執行器，以簡化常見任務。請先確保您已安裝 `just`。
+本專案使用現代化的 Python 開發工具鏈：
 
-- **macOS (使用 Homebrew):**
-  ```bash
-  brew install just
-  ```
-- **其他系統:**
-  請參考 [Just 官方安裝說明](https://just.systems/man/en/chapter_4.html)。
+- **Python 3.11+**
+- **Poetry** (依賴管理)
+- **Just** (任務執行器)
+
+安裝必要工具：
+
+```bash
+# macOS (使用 Homebrew)
+brew install just poetry
+
+# 或者使用 pipx 安裝 Poetry
+pipx install poetry
+```
 
 ### 安裝步驟
 
 1.  **複製倉庫**
 
     ```bash
-    git clone https://github.com/your-username/gsc-cli.git
-    cd gsc-cli
+    git clone https://github.com/your-username/gsc_db.git
+    cd gsc_db
     ```
 
 2.  **一鍵安裝與設定 (推薦)**
-    此指令將使用 Poetry 安裝所有依賴，並引導您完成首次 Google API 身份驗證。
+
+    此指令將使用 Poetry 安裝所有依賴，並引導您完成首次 Google API 身份驗證：
+
     ```bash
     just bootstrap
+    ```
+
+3.  **設定 Google API 認證**
+
+    您需要在 Google Cloud Console 中建立專案並下載 OAuth2 憑證文件：
+
+    ```bash
+    # 將您的 client_secret.json 放在 cred/ 目錄下
+    cp path/to/your/client_secret.json cred/
+
+    # 執行認證流程
+    just auth
     ```
 
 ## 🎯 基本用法
 
 所有常用操作都已封裝為 `just` 任務。執行 `just --list` 可以查看所有可用的指令。
 
-### 1. 站點管理
+### 1. 查看可用指令
 
 ```bash
-# 列出所有已配置的站點
+# 列出所有可用的 just 任務
+just --list
+```
+
+### 2. 站點管理
+
+```bash
+# 列出所有已配置的站點（本地數據庫 + 遠程 GSC 帳戶）
 just site-list
 
-# 新增一個站點
+# 新增一個站點到本地數據庫
 just site-add "sc-domain:your-site.com"
 ```
 
-### 2. 同步數據
+### 3. 數據同步
 
 ```bash
+# 同步站點 ID 為 1 的最近 7 天數據
+just sync-site 1 7
+
 # 同步站點 ID 為 1 的最近 14 天數據
 just sync-site 1 14
 
-# 執行完整的每日維護 (同步所有站點、備份資料庫、清理舊備份)
+# 批次同步多個站點（站點 ID: 1, 3, 5）
+just sync-multiple "1 3 5"
+
+# 執行完整的每日維護程序（同步所有站點、備份資料庫、清理舊備份）
 just maintenance
 ```
 
-### 3. 數據分析
+### 4. 開發與測試
 
 ```bash
-# 檢查站點 ID 為 1 的數據覆蓋情況
-poetry run gsc-cli analyze coverage 1
+# 執行所有品質檢查（程式碼風格、類型檢查、測試）
+just check
 
-# 比較站點 ID 為 1 在兩個時間段的表現
-poetry run gsc-cli analyze compare 1 2023-01-01 2023-01-07 2023-01-08 2023-01-14
+# 只執行測試
+just test
+
+# 只執行類型檢查
+just type-check
+
+# 程式碼格式化
+just lint
 ```
 
-## 🤖 API 服務 (為 AI Agent 準備)
+## 🤖 API 服務
 
 本專案包含一個 FastAPI 伺服器，可作為未來 AI Agent 或 Web 儀表板的數據後端。
 
-1.  **啟動開發伺服器 (具備自動重載功能):**
-
-    ```bash
-    just dev server
-    ```
-
-2.  **查看 API 文檔:**
-    伺服器運行後，請在瀏覽器中打開 [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)，您將看到一個由 Swagger UI 生成的互動式 API 文檔。
-
-## 🛣️ 發展藍圖 (Roadmap)
-
-我們為這個專案規劃了激動人心的未來！我們的目標是將此工具發展為一個全面的網站數據分析平台。歡迎您從以下方向貢獻您的才華：
-
-- [ ] **整合 AI Agent**: 開發一個對話式 AI 代理 (使用 LangChain, LlamaIndex 等)，能用自然語言回答關於您 GSC 數據的問題。
-- [ ] **進階數據分析**：新增更多內建的分析腳本與報告（例如：趨勢偵測、異常警報）。
-- [ ] **支援更多數據源**：整合其他數據來源，如 Google Analytics, Ahrefs 或 Semrush。
-- [ ] **Web 儀表板**：建立一個簡單的網頁介面，用以視覺化數據並與 AI Agent 互動。
-- [ ] **插件系統**：允許使用者輕鬆地加入自訂的數據擷取器或分析模組。
-
-## 🤝 如何貢獻 (Contributing)
-
-我們深信開源的力量，並誠摯歡迎任何形式的貢獻，無論是回報問題、建議新功能，還是直接提交程式碼。
-
-一份好的貢獻開始於良好的溝通。您可以從查看 Issues 列表或我們上方的 **發展藍圖** 來尋找靈感。
-
-在您開始動手前，請務必閱讀我們詳細的 **貢獻指南 (CONTRIBUTING.md)**，它包含了完整的開發流程、程式碼風格和 Pull Request 指南。
+### 啟動服務
 
 ```bash
-# 運行所有品質檢查 (格式化、類型檢查、測試)
+# 啟動開發伺服器（具備自動重載功能）
+just dev-server
+
+# 啟動生產伺服器
+just prod-server
+```
+
+### API 文檔
+
+伺服器運行後，請在瀏覽器中打開：
+
+- **Swagger UI**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- **ReDoc**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+
+## 🛠️ 開發環境
+
+### 設定開發環境
+
+```bash
+# 安裝依賴（包括開發依賴）
+just setup
+
+# 安裝 pre-commit hooks
+poetry run pre-commit install
+
+# 執行完整檢查
 just check
 ```
 
-## 📄 授權條款 (License)
+### 專案結構
+
+```
+gsc_db/
+├── src/                    # 主要源碼
+│   ├── analysis/          # 數據分析模組
+│   ├── cli/               # CLI 指令
+│   ├── services/          # 核心服務（GSC 客戶端、數據庫等）
+│   ├── utils/             # 工具函數
+│   └── web/               # FastAPI Web 服務
+├── tests/                 # 測試文件
+├── cred/                  # 認證文件（不包含在版本控制中）
+├── data/                  # 數據庫文件
+├── logs/                  # 日誌文件
+├── reports/               # 分析報告
+└── justfile              # 任務定義
+```
+
+### 品質保證
+
+本專案採用現代化的 Python 開發最佳實踐：
+
+- **Ruff**: 快速的 linting 和格式化
+- **mypy**: 靜態類型檢查
+- **pytest**: 測試框架（支援並行執行）
+- **pre-commit**: Git hooks 自動檢查
+- **Poetry**: 依賴管理和虛擬環境
+
+## 🧪 測試
+
+```bash
+# 執行所有測試
+just test
+
+# 執行特定測試
+poetry run pytest tests/test_integration.py -v
+
+# 執行測試並生成覆蓋率報告
+poetry run pytest --cov=src tests/
+```
+
+## 📊 數據分析功能
+
+本專案支援多種數據分析功能：
+
+```bash
+# 使用 CLI 進行數據分析
+poetry run gsc-cli analyze coverage 1
+poetry run gsc-cli analyze compare 1 2023-01-01 2023-01-07 2023-01-08 2023-01-14
+
+# 互動式數據視覺化
+poetry run python -m src.analysis.interactive_data_visualizer
+
+# 每小時性能分析
+poetry run python -m src.analysis.hourly_performance_analyzer
+```
+
+## 🛣️ 發展藍圖
+
+- [ ] **整合 AI Agent**: 開發一個對話式 AI 代理，能用自然語言回答關於您 GSC 數據的問題
+- [ ] **進階數據分析**: 新增更多內建的分析腳本與報告（趨勢偵測、異常警報）
+- [ ] **支援更多數據源**: 整合其他數據來源，如 Google Analytics, Ahrefs 或 Semrush
+- [ ] **Web 儀表板**: 建立一個簡單的網頁介面，用以視覺化數據並與 AI Agent 互動
+- [ ] **插件系統**: 允許使用者輕鬆地加入自訂的數據擷取器或分析模組
+
+## 🤝 如何貢獻
+
+我們誠摯歡迎任何形式的貢獻！請查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解詳細的貢獻指南。
+
+### 開發流程
+
+1. Fork 此倉庫
+2. 創建功能分支 (`git checkout -b feature/amazing-feature`)
+3. 提交您的修改 (`git commit -m 'Add some amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 開啟 Pull Request
+
+### 程式碼品質
+
+在提交 PR 之前，請確保：
+
+```bash
+# 所有檢查都通過
+just check
+
+# 測試覆蓋率良好
+just test
+```
+
+## 📄 授權條款
 
 本專案採用 MIT 授權條款。詳情請見 [LICENSE](LICENSE) 文件。
+
+---
+
+<p align="center">
+  如果這個專案對您有幫助，請給我們一個 ⭐️！
+</p>

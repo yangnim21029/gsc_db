@@ -4,7 +4,10 @@
 """
 
 import logging
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+
+from ..services.database import SyncMode
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +19,44 @@ class HourlyDatabase:
         self.get_connection = db_connection_func
         self.site_url = site_url
 
-    def sync_data(self, client, start_date: str, end_date: str) -> int:
+    def get_existing_dates(self, site_id: int, start_date: str, end_date: str) -> set[str]:
+        """一次性獲取指定範圍內已存在數據的日期集合。"""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT DISTINCT date
+                FROM hourly_rankings
+                WHERE site_id = ? AND date BETWEEN ? AND ?
+                """,
+                (site_id, start_date, end_date),
+            )
+            return {row["date"] for row in cursor.fetchall()}
+
+    def _delete_data_for_date(self, site_id: int, date: str):
+        """為特定日期刪除每小時數據"""
+        with self.get_connection() as conn:
+            try:
+                conn.execute(
+                    "DELETE FROM hourly_rankings WHERE site_id = ? AND date = ?",
+                    (site_id, date),
+                )
+                conn.commit()
+            except Exception as e:
+                logger.error(f"刪除站點 {self.site_url} 日期 {date} 的每小時數據時失敗: {e}")
+                conn.rollback()
+                raise
+
+    def sync_data(
+        self, client, start_date: str, end_date: str, mode: SyncMode = SyncMode.SKIP
+    ) -> int:
         """
         同步指定時間範圍內的每小時數據。
         這是一個高階方法，協調 GSC 客戶端和數據庫保存。
         """
         total_inserted_count = 0
-        logger.info(f"開始為站點 {self.site_url} 同步 {start_date} 到 {end_date} 的每小時數據。")
+        logger.info(
+            f"開始為站點 {self.site_url} 同步 {start_date} 到 {end_date} 的每小時數據，模式: {mode.value}。"
+        )
 
         try:
             # 1. 從主數據庫獲取 site_id
@@ -35,29 +69,67 @@ class HourlyDatabase:
                     return 0
                 site_id = site_row["id"]
 
-            # 2. 從 GSC Client 獲取數據流
-            # 我們假設 gsc_client 有一個 stream_hourly_data 方法
-            data_stream = client.stream_hourly_data(
-                site_url=self.site_url, start_date=start_date, end_date=end_date
+            # ================= 計劃 (Planning) 階段 =================
+            all_possible_dates = set()
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+
+            current_dt = start_dt
+            while current_dt <= end_dt:
+                all_possible_dates.add(current_dt.strftime("%Y-%m-%d"))
+                current_dt += timedelta(days=1)
+
+            dates_to_sync = sorted(list(all_possible_dates))
+
+            if mode == SyncMode.SKIP:
+                existing_dates = self.get_existing_dates(site_id, start_date, end_date)
+                dates_to_sync = sorted(list(all_possible_dates - existing_dates))
+
+            logger.info(
+                f"計劃同步 {len(all_possible_dates)} 天 ({start_date} 到 {end_date}). "
+                f"模式: {mode.value}. "
+                f"將要同步 {len(dates_to_sync)} 天."
             )
 
-            # 3. 處理數據流並保存
-            chunk = []
-            chunk_size = 200  # 每 200 條記錄保存一次
+            if not dates_to_sync:
+                logger.info(f"站點 {self.site_url} 在指定期間無需同步。")
+                return 0
 
-            for item in data_stream:
-                # 為每條記錄添加 site_id
-                item["site_id"] = site_id
-                chunk.append(item)
-                if len(chunk) >= chunk_size:
-                    inserted_count = self.save_hourly_ranking_data(chunk)
-                    total_inserted_count += inserted_count
-                    chunk = []
+            # ================= 執行 (Execution) 階段 =================
+            for date_str in dates_to_sync:
+                try:
+                    if mode == SyncMode.OVERWRITE:
+                        logger.info(
+                            f"覆蓋模式: 正在刪除站點 {self.site_url} 日期 {date_str} 的舊數據..."
+                        )
+                        self._delete_data_for_date(site_id, date_str)
 
-            # 保存最後剩餘的記錄
-            if chunk:
-                inserted_count = self.save_hourly_ranking_data(chunk)
-                total_inserted_count += inserted_count
+                    data_stream = client.stream_hourly_data(
+                        site_url=self.site_url, start_date=date_str, end_date=date_str
+                    )
+
+                    chunk: List[Dict[str, Any]] = []
+                    chunk_size = 200
+
+                    for item in data_stream:
+                        item["site_id"] = site_id
+                        chunk.append(item)
+                        if len(chunk) >= chunk_size:
+                            inserted_count = self.save_hourly_ranking_data(chunk)
+                            total_inserted_count += inserted_count
+                            chunk = []
+
+                    if chunk:
+                        inserted_count = self.save_hourly_ranking_data(chunk)
+                        total_inserted_count += inserted_count
+
+                    logger.info(f"站點 {self.site_url} 日期 {date_str} 每小時數據同步完成")
+
+                except Exception as e:
+                    logger.error(
+                        f"同步站點 {self.site_url} 日期 {date_str} 的每小時數據時發生錯誤: {e}"
+                    )
+                    continue
 
             logger.info(
                 f"站點 {self.site_url} 的每小時數據同步完成，共新增 {total_inserted_count} 條記錄。"
@@ -65,7 +137,6 @@ class HourlyDatabase:
             return total_inserted_count
 
         except AttributeError as e:
-            # 捕獲 GSCClient 中可能不存在 stream_hourly_data 的情況
             logger.error(
                 "GSCClient 中缺少 'stream_hourly_data' 方法，無法執行每小時同步。請實現此方法。"
             )
@@ -136,7 +207,7 @@ class HourlyDatabase:
 
             if site_id is not None:
                 conditions.append("hr.site_id = ?")
-                params.append(site_id)
+                params.append(site_id)  # type: ignore
 
             if keyword_id is not None:
                 conditions.append("hr.keyword_id = ?")

@@ -23,12 +23,14 @@ repos:
         args: [--fix, --ignore=E501]
       - id: ruff-format
 
-  # --- Basic Python Checks ---
-  # Only basic syntax checks for now
+  # --- Custom Project Checks ---
+  # Runs the slower, project-wide checks like mypy and pytest
   - repo: local
     hooks:
-      - id: python-syntax-check
-        name: Python syntax check
-        entry: python -m py_compile
+      - id: check-commit
+        name: Run type-checking and tests
+        entry: just check-commit
         language: system
         types: [python]
+        pass_filenames: false
+        always_run: true

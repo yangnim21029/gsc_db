@@ -139,8 +139,8 @@ HOURLY_COLORS = {
 class HourlyAnalyzer:
     """每小時數據分析器"""
 
-    def __init__(self, db_path: str = str(config.DB_PATH)):
-        self.db_path = db_path or str(config.DB_PATH)
+    def __init__(self, db_path: str = str(config.settings.paths.database_path)):
+        self.db_path = db_path or str(config.settings.paths.database_path)
 
     def get_hourly_summary(self, days=7):
         """獲取每小時數據摘要"""
@@ -816,7 +816,7 @@ def run_hourly_analysis(
     output_path: Optional[str] = None,
     include_plots: bool = True,
     plot_save_dir: Optional[str] = None,
-    db_path: str = str(config.DB_PATH),
+    db_path: str = str(config.settings.paths.database_path),
 ) -> Dict[str, Any]:
     """
     運行每小時數據分析

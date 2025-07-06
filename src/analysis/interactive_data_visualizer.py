@@ -10,22 +10,22 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 
 from ..services.analysis_service import AnalysisService
+from ..utils.rich_console import Console
 
 logger = logging.getLogger(__name__)
 
 
 class InteractiveVisualizer:
-    """交互式數據趨勢可視化工具"""
+    """交互式數據可視化工具"""
 
     def __init__(self, analysis_service: AnalysisService):
         """初始化可視化工具"""
         self.analysis_service = analysis_service
-        self.db = analysis_service.db  # 仍然需要 db 來獲取站點和關鍵字列表
+        self.db = analysis_service.db
         self.console = Console()
 
     def get_sites(self) -> List[Dict[str, Any]]:

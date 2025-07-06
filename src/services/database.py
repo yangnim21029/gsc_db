@@ -22,15 +22,27 @@ class SyncMode(str, Enum):
 class Database:
     def __init__(self, db_path: Optional[str] = None):
         """初始化數據庫連接"""
-        if db_path is None:
-            self.db_path = str(config.DB_PATH)
-        else:
-            self.db_path = db_path
+        self.db_path = db_path or config.settings.paths.database_path
+        self._conn = None
 
+        # 對於記憶體資料庫，我們需要保持一個持久的連接
+        if self.db_path == ":memory:":
+            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA foreign_keys = ON;")
+
+        logger.info(f"Database initialized with path: {self.db_path}")
+
+        # 初始化資料庫表格
         self.init_db()
 
     def get_connection(self) -> sqlite3.Connection:
         """獲取數據庫連接"""
+        if self._conn is not None:
+            # 對於記憶體資料庫，返回持久連接
+            return self._conn
+
+        # 對於檔案資料庫，創建新連接
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
@@ -360,9 +372,14 @@ class Database:
         stats = {"inserted": 0, "updated": 0, "skipped": 0}
         if not chunk:
             return stats
+
+        # 注意：現在日期級別的檢查已經在 _sync_single_day 中完成
+        # 這裡只需要處理行級別的重複檢查（如果需要的話）
         to_insert = []
         with self.get_connection() as conn:
             if sync_mode == "skip":
+                # 對於 skip 模式，仍然需要檢查行級別的重複
+                # 因為可能存在部分數據的情況
                 for row in chunk:
                     res = conn.execute(
                         "SELECT id FROM gsc_performance_data WHERE site_id=? AND date=? AND page=? AND query=? AND device=? AND search_type=?",
@@ -380,7 +397,9 @@ class Database:
                     else:
                         stats["skipped"] += 1
             else:
+                # 對於其他模式（replace/overwrite），直接插入所有數據
                 to_insert = chunk
+
             if to_insert:
                 insert_data = [
                     (
@@ -618,6 +637,24 @@ class Database:
             """
             return [dict(row) for row in conn.execute(query, (limit,)).fetchall()]
 
+    def get_existing_data_days_for_sites(
+        self, site_ids: List[int], start_date: str, end_date: str
+    ) -> set[tuple[int, str]]:
+        """一次性獲取多個站點在指定日期範圍內已存在數據的 (site_id, date) 組合。"""
+        if not site_ids:
+            return set()
+        placeholders = ",".join("?" for _ in site_ids)
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                f"""
+                SELECT DISTINCT site_id, date
+                FROM gsc_performance_data
+                WHERE site_id IN ({placeholders}) AND date BETWEEN ? AND ?
+                """,
+                site_ids + [start_date, end_date],
+            )
+            return {(row["site_id"], row["date"]) for row in cursor.fetchall()}
+
     def get_latest_date_from_table(self, table_name: str, site_id: int) -> Optional[date]:
         """從指定表獲取指定站點的最新日期"""
         with self.get_connection() as conn:
@@ -628,4 +665,7 @@ class Database:
             return None
 
     def close_connection(self):
-        pass
+        """關閉資料庫連接"""
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None

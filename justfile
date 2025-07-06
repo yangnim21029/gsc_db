@@ -14,7 +14,7 @@ set dotenv-load
 
 # --- 變數 ---
 # 透過一次 Python 呼叫獲取所有設定值，以減少 `poetry run` 的開銷。
-_CONFIG       := `poetry run python -c "from src.config import settings; print(f'{settings.db_path}\\n{settings.backup_dir}')"`
+_CONFIG       := `poetry run python -c "from src.config import settings; print(f'{settings.paths.database_path}\\n{settings.paths.backup_dir}')"`
 DB_PATH       := `echo "{{_CONFIG}}" | head -n 1`
 BACKUP_DIR    := `echo "{{_CONFIG}}" | tail -n 1`
 BACKUP_PREFIX := "gsc_data_backup"
@@ -67,7 +67,7 @@ site-add site_url:
 ## 為特定網站在指定天數內同步資料。 用法: `just sync-site <site_id> [days]`
 sync-site site_id days='7':
     @echo "🔄 正在為網站 ID '{{site_id}}' 同步過去 '{{days}}' 天的資料..."
-    poetry run gsc-cli sync daily --site-id {{site_id}} --days {{days}} --resume
+    poetry run gsc-cli sync daily --site-id {{site_id}} --days {{days}}
 
 ## 迴圈同步多個網站。 用法: `just sync-multiple "1 3 5"`
 sync-multiple site_list:
@@ -92,7 +92,7 @@ maintenance: _sync-daily _backup-db _clean-backups
 # [內部] 步驟 1: 為所有網站執行每日資料同步 (最近 2 天)。
 _sync-daily:
     @echo "🔄 1. 正在為所有網站執行每日資料同步 (最近 2 天)..."
-    @poetry run gsc-cli sync daily --all-sites --days 2 --resume
+    @poetry run gsc-cli sync daily --all-sites --days 2
 
 # [內部] 步驟 2: 備份資料庫。
 _backup-db:
@@ -137,7 +137,8 @@ lint:
 ## 使用 pytest 執行測試套件。
 test:
     @echo "🧪 正在使用 pytest 執行測試..."
-    @poetry run pytest
+    # -n auto: 使用 pytest-xdist 並行執行
+    @poetry run pytest -n auto
 
 ## 執行 mypy 類型檢查器。
 type-check:

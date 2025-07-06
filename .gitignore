@@ -79,3 +79,9 @@ demo_optimizations.db
 *.tmp
 *.temp
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# cursor
+.cursorrules
+.cursor/

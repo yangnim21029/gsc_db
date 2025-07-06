@@ -21,11 +21,14 @@ from .database import Database
 from .hourly_data import HourlyDataHandler
 
 sys.path.append(os.path.dirname(__file__))
+import threading
 import xml.etree.ElementTree as ET
 
 import requests
+import typer
 
 from .. import config
+from ..utils.rich_console import console
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +50,7 @@ class GSCClient:
         self.api_requests_this_minute = 0
         self.last_minute_reset = datetime.now().replace(second=0, microsecond=0)
         self.today = datetime.now().date()
+        self._api_lock = threading.Lock()
 
         # 從數據庫載入今日API使用計數
         self._load_api_usage_from_db()
@@ -67,6 +71,46 @@ class GSCClient:
         self.hourly_handler = None
         if self.service:
             self.hourly_handler = HourlyDataHandler(self.service, self.database)
+
+    def authenticate(self) -> bool:
+        """
+        執行完整的認證流程。
+
+        1. 檢查現有憑證是否有效。
+        2. 如果無效，啟動控制台 OAuth 流程。
+        3. 獲取新的憑證並保存。
+
+        Returns:
+            如果最終認證成功則返回 True，否則返回 False。
+        """
+        if self.is_authenticated():
+            console.print("✅ 已使用現有有效憑證進行認證。")
+            return True
+
+        console.print("🚀 [bold yellow]需要新的認證，啟動 OAuth2 流程...[/bold yellow]")
+        auth_url = self.get_auth_url()
+
+        console.print("\n1. 請將以下 URL 複製到您的瀏覽器中打開，並登入您的 Google 帳戶進行授權：")
+        console.print(f"\n[link={auth_url}]{auth_url}[/link]\n")
+
+        console.print(
+            "2. 授權後，您將被重定向到一個無法打開的頁面 (這是正常的)。"
+            "請從該頁面的瀏覽器地址欄中，複製 `code=` 後面的所有內容。"
+        )
+
+        auth_code = typer.prompt("3. 請在此處貼上您複製的授權碼 (code)")
+
+        if not auth_code:
+            console.print("[bold red]❌ 未提供授權碼，認證已取消。[/bold red]")
+            return False
+
+        console.print("\n⏳ [cyan]正在使用授權碼換取憑證...[/cyan]")
+        if self.handle_oauth_callback(auth_code.strip()):
+            console.print("[bold green]✅ 認證成功！憑證已保存。[/bold green]")
+            return True
+        else:
+            console.print("[bold red]❌ 認證失敗。請檢查您的授權碼或配置。[/bold red]")
+            return False
 
     def stream_site_data(self, site_url: str, start_date: str, end_date: str):
         """
@@ -890,46 +934,48 @@ class GSCClient:
             return []
 
     def _track_api_request(self):
-        """追蹤API請求"""
-        now = datetime.now()
-        current_minute = now.replace(second=0, microsecond=0)
-        current_date = now.date()
+        """追蹤API請求 (線程安全)"""
+        with self._api_lock:
+            now = datetime.now()
+            current_minute = now.replace(second=0, microsecond=0)
+            current_date = now.date()
 
-        # 重置每日計數器
-        if current_date != self.today:
-            self.api_requests_today = 0
-            self.today = current_date
-            # 為新的一天創建數據庫記錄
-            self._load_api_usage_from_db()
+            # 重置每日計數器
+            if current_date != self.today:
+                self.api_requests_today = 0
+                self.today = current_date
+                # 為新的一天創建數據庫記錄
+                self._load_api_usage_from_db()
 
-        # 重置每分鐘計數器
-        if current_minute != self.last_minute_reset:
-            self.api_requests_this_minute = 0
-            self.last_minute_reset = current_minute
+            # 重置每分鐘計數器
+            if current_minute != self.last_minute_reset:
+                self.api_requests_this_minute = 0
+                self.last_minute_reset = current_minute
 
-        self.api_requests_today += 1
-        self.api_requests_this_minute += 1
+            self.api_requests_today += 1
+            self.api_requests_this_minute += 1
 
-        # 保存到數據庫
-        self._save_api_usage_to_db()
+            # 保存到數據庫
+            self._save_api_usage_to_db()
 
-        # 記錄到日誌
-        logger.info(
-            f"API請求計數: 今日 {self.api_requests_today}, 本分鐘 {self.api_requests_this_minute}"
-        )
+            # 記錄到日誌
+            logger.info(
+                f"API請求計數: 今日 {self.api_requests_today}, 本分鐘 {self.api_requests_this_minute}"
+            )
 
     def get_api_usage_stats(self) -> Dict[str, Any]:
         """獲取API使用統計"""
-        return {
-            "requests_today": self.api_requests_today,
-            "requests_this_minute": self.api_requests_this_minute,
-            "daily_limit": 100000,
-            "minute_limit": 1200,
-            "daily_remaining": 100000 - self.api_requests_today,
-            "minute_remaining": 1200 - self.api_requests_this_minute,
-            "daily_usage_percent": (self.api_requests_today / 100000) * 100,
-            "minute_usage_percent": (self.api_requests_this_minute / 1200) * 100,
-        }
+        with self._api_lock:
+            return {
+                "requests_today": self.api_requests_today,
+                "requests_this_minute": self.api_requests_this_minute,
+                "daily_limit": 100000,
+                "minute_limit": 1200,
+                "daily_remaining": 100000 - self.api_requests_today,
+                "minute_remaining": 1200 - self.api_requests_this_minute,
+                "daily_usage_percent": (self.api_requests_today / 100000) * 100,
+                "minute_usage_percent": (self.api_requests_this_minute / 1200) * 100,
+            }
 
     def _load_api_usage_from_db(self):
         """從數據庫載入今日API使用計數"""

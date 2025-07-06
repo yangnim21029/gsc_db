@@ -29,7 +29,7 @@ class Container(containers.DeclarativeContainer):
     # Services
     db_service = providers.Singleton(
         Database,
-        db_path=config.db_path,
+        db_path=config.paths.database_path,
     )
 
     gsc_client = providers.Singleton(GSCClient)

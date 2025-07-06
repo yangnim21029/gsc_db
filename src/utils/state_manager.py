@@ -3,14 +3,13 @@
 
 import json
 import logging
-from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .. import config
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
-STATE_FILE_PATH = Path(config.CONFIG_DIR) / "sync_state.json"
+STATE_FILE_PATH = settings.paths.config_dir / "sync_state.json"
 
 
 class StateManager:

@@ -7,10 +7,13 @@ GSC 數據同步作業
 
 import concurrent.futures
 import logging
+import ssl
 import traceback
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+import requests
+from googleapiclient.errors import HttpError
 from rich.progress import (
     BarColumn,
     Progress,
@@ -24,6 +27,7 @@ from tenacity import (
     RetryError,
     before_sleep_log,
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
@@ -46,6 +50,42 @@ def _check_existing_data(db: Database, site_id: int, date: str) -> bool:
         return bool(result and result["count"] > 0)
 
 
+def _is_retryable_error(exception: Exception) -> bool:
+    """判斷是否為可重試的錯誤"""
+    # SSL 錯誤
+    if isinstance(exception, ssl.SSLError):
+        return True
+
+    # 網絡連接錯誤
+    if isinstance(
+        exception,
+        (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+            requests.exceptions.RequestException,
+        ),
+    ):
+        return True
+
+    # HTTP 錯誤中的臨時錯誤
+    if isinstance(exception, HttpError):
+        # 5xx 伺服器錯誤和 429 限流錯誤通常可以重試
+        if exception.resp.status >= 500 or exception.resp.status == 429:
+            return True
+        # 403 可能是臨時的配額限制
+        if exception.resp.status == 403:
+            return True
+
+    # 其他網絡相關錯誤
+    if "SSLError" in str(exception) or "record layer failure" in str(exception):
+        return True
+
+    if "length mismatch" in str(exception) or "SSL" in str(exception):
+        return True
+
+    return False
+
+
 @retry(
     wait=wait_exponential(
         multiplier=1,
@@ -53,6 +93,7 @@ def _check_existing_data(db: Database, site_id: int, date: str) -> bool:
         max=settings.retry.wait_max_seconds,
     ),
     stop=stop_after_attempt(settings.retry.attempts),
+    retry=retry_if_exception_type((ssl.SSLError, requests.exceptions.RequestException, HttpError)),
     before_sleep=before_sleep_log(logger, logging.WARNING),
 )
 def _sync_single_day(
@@ -63,42 +104,80 @@ def _sync_single_day(
     sync_mode: SyncMode,
 ) -> Dict[str, int]:
     """同步單日數據，使用 tenacity 進行重試。"""
+    # --- 優化：在執行 API 請求前，先進行最終檢查 ---
+    # 即使 run_sync 已經過濾，這裡作為雙重保險，確保任務的獨立性和健壯性。
+    if sync_mode == SyncMode.SKIP and _check_existing_data(db, site["id"], date):
+        logger.info(f"數據已存在，跳過 API 同步 [站點: {site['name']}, 日期: {date}]")
+        return {"inserted": 0, "updated": 0, "skipped": 0, "tasks_skipped_runtime": 1}
+
     site_name = site["name"]
 
     if sync_mode == SyncMode.OVERWRITE:
         db.delete_performance_data_for_day(site["id"], date)
 
     day_stats = {"inserted": 0, "updated": 0, "skipped": 0}
-    data_stream = client.stream_site_data(site_url=site["domain"], start_date=date, end_date=date)
 
-    for device, search_type, chunk in data_stream:
-        chunk_stats = db.save_data_chunk(
-            chunk=chunk,
-            site_id=site["id"],
-            sync_mode=sync_mode.value,
-            date_str=date,
-            device=device,
-            search_type=search_type,
+    try:
+        data_stream = client.stream_site_data(
+            site_url=site["domain"], start_date=date, end_date=date
         )
-        for key in day_stats:
-            day_stats[key] += chunk_stats.get(key, 0)
 
-    logger.info(
-        f"站點 [bold cyan]{site_name}[/bold cyan] 日期 [bold]{date}[/bold] - "
-        f"[green]同步成功[/green]"
-    )
-    return day_stats
+        for device, search_type, chunk in data_stream:
+            chunk_stats = db.save_data_chunk(
+                chunk=chunk,
+                site_id=site["id"],
+                sync_mode=sync_mode.value,
+                date_str=date,
+                device=device,
+                search_type=search_type,
+            )
+            for key in day_stats:
+                day_stats[key] += chunk_stats.get(key, 0)
+
+        logger.info(
+            f"站點 [bold cyan]{site_name}[/bold cyan] 日期 [bold]{date}[/bold] - "
+            f"[green]同步成功[/green]"
+        )
+        return day_stats
+
+    except ssl.SSLError as e:
+        logger.warning(f"SSL 錯誤，將重試: {e}")
+        raise
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"網絡請求錯誤，將重試: {e}")
+        raise
+    except HttpError as e:
+        if e.resp.status >= 500 or e.resp.status in [429, 403]:
+            logger.warning(f"HTTP 錯誤 {e.resp.status}，將重試: {e}")
+            raise
+        else:
+            logger.error(f"不可重試的 HTTP 錯誤 {e.resp.status}: {e}")
+            raise
+    except Exception as e:
+        if _is_retryable_error(e):
+            logger.warning(f"可重試的錯誤: {e}")
+            raise
+        else:
+            logger.error(f"不可重試的錯誤: {e}")
+            raise
 
 
 def _print_final_summary(total_stats: Dict[str, int]):
     """打印最終的同步結果摘要。"""
-    table = Table(title="📊 同步結果摘要", show_header=True, header_style="bold magenta")
+    table = Table(title="📊 同步作業摘要", show_header=True, header_style="bold magenta")
     table.add_column("項目", style="dim")
     table.add_column("數量", justify="right")
 
+    table.add_row(
+        "計劃前跳過的任務", f"[yellow]{total_stats.get('tasks_pre_skipped', 0):,}[/yellow]"
+    )
+    table.add_row(
+        "執行中跳過的任務", f"[yellow]{total_stats.get('tasks_skipped_runtime', 0):,}[/yellow]"
+    )
     table.add_row("插入記錄", f"[green]{total_stats.get('inserted', 0):,}[/green]")
     table.add_row("更新記錄", f"[blue]{total_stats.get('updated', 0):,}[/blue]")
-    table.add_row("跳過記錄", f"[yellow]{total_stats.get('skipped', 0):,}[/yellow]")
+    # 'skipped' 現在只代表在保存數據塊時跳過的記錄，通常為 0
+    # table.add_row("跳過記錄 (儲存層)", f"[yellow]{total_stats.get('skipped', 0):,}[/yellow]")
     table.add_row("失敗任務", f"[red]{total_stats.get('failed', 0):,}[/red]")
 
     console.print(table)
@@ -162,24 +241,42 @@ def run_sync(
             if (site["id"], date) not in existing_data_days
         ]
 
+    tasks_pre_skipped = all_possible_task_count - len(tasks_to_run)
     logger.info(
         f"計劃同步 {len(sites_to_sync)} 個站點， {len(date_list)} 天。"
-        f"將要執行: {len(tasks_to_run)} 個同步任務。"
+        f"總任務數: {all_possible_task_count}, 已跳過: {tasks_pre_skipped}, 將執行: {len(tasks_to_run)}。"
     )
 
     if not tasks_to_run:
         logger.info("所有計劃的數據都已存在，無需同步。")
         _print_final_summary(
-            {"inserted": 0, "updated": 0, "skipped": all_possible_task_count, "failed": 0}
+            {
+                "tasks_pre_skipped": all_possible_task_count,
+                "tasks_skipped_runtime": 0,
+                "inserted": 0,
+                "updated": 0,
+                "failed": 0,
+            }
         )
         return
 
     # ================= 3. 執行階段 =================
+    # 根據 GSC API 最佳實踐，減少併發數量
+    # API 文件建議避免過度併發以防止 SSL 和速率限制問題
+    optimized_max_workers = min(max_workers, 2)  # 最多 2 個併發 worker
+
+    if optimized_max_workers != max_workers:
+        logger.info(
+            f"根據 GSC API 最佳實踐，將併發數量從 {max_workers} 調整為 {optimized_max_workers}"
+        )
+
     total_stats = {
         "inserted": 0,
         "updated": 0,
-        "skipped": all_possible_task_count - len(tasks_to_run),
+        "skipped": 0,  # 用於記錄儲存層的跳過，通常為 0
         "failed": 0,
+        "tasks_pre_skipped": tasks_pre_skipped,
+        "tasks_skipped_runtime": 0,
     }
 
     progress_columns = [
@@ -193,7 +290,7 @@ def run_sync(
     ]
 
     with Progress(*progress_columns, console=console) as progress:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=optimized_max_workers) as executor:
             task_id = progress.add_task("[bold green]並行同步中...", total=len(tasks_to_run))
 
             future_to_task = {
@@ -239,7 +336,7 @@ class BulkDataSynchronizer:
         end_date: Optional[str] = None,
         days: int = 2,
         sync_mode: SyncMode = SyncMode.OVERWRITE,
-        max_workers: int = 4,
+        max_workers: int = 2,  # 默認減少到 2 個 worker
     ):
         """Run the synchronization process."""
         return run_sync(

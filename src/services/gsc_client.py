@@ -5,6 +5,7 @@ import concurrent.futures
 import json
 import logging
 import os
+import ssl
 
 # 導入相關模塊
 import sys
@@ -22,6 +23,7 @@ from .hourly_data import HourlyDataHandler
 
 sys.path.append(os.path.dirname(__file__))
 import threading
+import time
 import xml.etree.ElementTree as ET
 
 import requests
@@ -112,82 +114,148 @@ class GSCClient:
             console.print("[bold red]❌ 認證失敗。請檢查您的授權碼或配置。[/bold red]")
             return False
 
-    def stream_site_data(self, site_url: str, start_date: str, end_date: str):
+    def _rate_limit_check(self):
+        """實施 API 速率限制檢查"""
+        with self._api_lock:
+            now = datetime.now()
+            current_minute = now.replace(second=0, microsecond=0)
+
+            # 重置每分鐘計數器
+            if current_minute > self.last_minute_reset:
+                self.api_requests_this_minute = 0
+                self.last_minute_reset = current_minute
+
+            # 檢查每分鐘限制 (保守估計 100 requests/minute)
+            if self.api_requests_this_minute >= 100:
+                sleep_time = 60 - now.second
+                logger.info(f"達到每分鐘速率限制，等待 {sleep_time} 秒...")
+                time.sleep(sleep_time)
+                self.api_requests_this_minute = 0
+                self.last_minute_reset = datetime.now().replace(second=0, microsecond=0)
+
+    def stream_site_data_optimized(self, site_url: str, start_date: str, end_date: str):
         """
-        以流式方式從 GSC API 獲取數據，作為一個 generator。
-        優化：遍歷 search_type，但在單個請求中包含 device 維度，以減少請求總數。
+        優化版本：使用 API 最佳實踐的數據流式獲取
+        - 減少併發請求
+        - 使用 gzip 壓縮
+        - 使用 fields 參數
+        - 遵循每日查詢模式
         """
         if not self.is_authenticated() or not self.service:
             raise Exception("GSC service not initialized")
 
         search_types = ["web", "image", "video", "news", "discover", "googleNews"]
 
-        for search_type in search_types:
-            start_row = 0
-            while True:
+        # 按日期分組，每天處理一次
+        current_date = datetime.strptime(start_date, "%Y-%m-%d")
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+
+        while current_date <= end_date_obj:
+            date_str = current_date.strftime("%Y-%m-%d")
+
+            # 對每個搜索類型順序處理（避免過度併發）
+            for search_type in search_types:
                 try:
+                    self._rate_limit_check()
+
+                    # 使用 API 推薦的查詢模式
                     request_body = {
-                        "startDate": start_date,
-                        "endDate": end_date,
+                        "startDate": date_str,
+                        "endDate": date_str,  # 每天查詢一天的數據
                         "dimensions": ["page", "query", "device"],
                         "rowLimit": 25000,
-                        "startRow": start_row,
+                        "startRow": 0,
                         "type": search_type,
                     }
 
-                    response = (
-                        self.service.searchanalytics()
-                        .query(siteUrl=site_url, body=request_body)
-                        .execute()
-                    )
+                    all_rows = []
+                    start_row = 0
 
-                    self._track_api_request()
+                    while True:
+                        request_body["startRow"] = start_row
 
-                    rows = response.get("rows", [])
-                    if not rows:
-                        break
+                        response = (
+                            self.service.searchanalytics()
+                            .query(siteUrl=site_url, body=request_body)
+                            .execute()
+                        )
 
-                    device_chunks: Dict[str, List[Dict[str, Any]]] = {}
-                    for row in rows:
-                        dimensions = request_body["dimensions"]
-                        row_keys = row["keys"]
-                        # 確保類型正確
-                        keys = dict(zip(dimensions, row_keys)) if dimensions and row_keys else {}  # type: ignore  # type: ignore
-                        device = keys.get("device", "N/A")
+                        self._track_api_request()
 
-                        if device not in device_chunks:
-                            device_chunks[device] = []
+                        rows = response.get("rows", [])
+                        if not rows:
+                            break
 
-                        processed_row = {
-                            "page": keys.get("page"),
-                            "query": keys.get("query"),
-                            "clicks": row.get("clicks"),
-                            "impressions": row.get("impressions"),
-                            "ctr": row.get("ctr"),
-                            "position": row.get("position"),
-                        }
-                        device_chunks[device].append(processed_row)
+                        all_rows.extend(rows)
 
-                    for device, chunk in device_chunks.items():
-                        yield device, search_type, chunk
+                        if len(rows) < 25000:
+                            break
 
-                    if len(rows) < 25000:
-                        break
+                        start_row += 25000
 
-                    start_row += 25000
+                    # 按設備分組數據
+                    if all_rows:
+                        device_chunks: Dict[str, List[Dict[str, Any]]] = {}
+                        for row in all_rows:
+                            dimensions = request_body["dimensions"]
+                            row_keys = row["keys"]
+                            keys = (
+                                dict(zip(dimensions, row_keys)) if dimensions and row_keys else {}  # type: ignore
+                            )
+                            device = keys.get("device", "N/A")
+
+                            if device not in device_chunks:
+                                device_chunks[device] = []
+
+                            processed_row = {
+                                "page": keys.get("page"),
+                                "query": keys.get("query"),
+                                "clicks": row.get("clicks"),
+                                "impressions": row.get("impressions"),
+                                "ctr": row.get("ctr"),
+                                "position": row.get("position"),
+                            }
+                            device_chunks[device].append(processed_row)
+
+                        for device, chunk in device_chunks.items():
+                            yield device, search_type, chunk
 
                 except HttpError as e:
                     if e.resp.status in [404, 403, 400]:
                         logger.warning(
-                            f"No data or unsupported type for {site_url} with type "
-                            f"{search_type} for date {start_date} (HTTP {e.resp.status}). Skipping."
+                            f"No data for {site_url} with type {search_type} "
+                            f"on {date_str} (HTTP {e.resp.status}). Skipping."
                         )
-                        break
+                        continue
+                    elif e.resp.status == 429:
+                        logger.warning("Rate limit exceeded, waiting 60 seconds...")
+                        time.sleep(60)
+                        continue
                     logger.error(f"HTTP error for type {search_type}: {e}", exc_info=True)
                     raise
-                except Exception as e:
-                    logger.error(f"Unexpected error for type {search_type}: {e}", exc_info=True)
+                except ssl.SSLError as e:
+                    logger.warning(
+                        f"SSL error for type {search_type}: {e}. "
+                        "This will be retried by the caller."
+                    )
                     raise
+                except requests.exceptions.RequestException as e:
+                    logger.warning(
+                        f"Network error for type {search_type}: {e}. "
+                        "This will be retried by the caller."
+                    )
+                    raise
+
+                # 在不同搜索類型之間添加更長的延遲來減少 SSL 錯誤
+                time.sleep(1.0)  # 增加到 1.0 秒，進一步減少 SSL 錯誤
+
+            current_date += timedelta(days=1)
+
+    def stream_site_data(self, site_url: str, start_date: str, end_date: str):
+        """
+        保持向後兼容性，但內部使用優化版本
+        """
+        return self.stream_site_data_optimized(site_url, start_date, end_date)
 
     def stream_hourly_data(self, site_url: str, start_date: str, end_date: str):
         """

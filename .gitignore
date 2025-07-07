@@ -61,6 +61,13 @@ logs/
 reports/
 *.log
 
+# Business Scripts Output
+# Ignore generated reports from one-off business scripts
+scripts/reports/
+scripts/*.csv
+scripts/*.xlsx
+scripts/*.json
+
 # Local Databases
 # Ignore all database files and their journals/backups.
 *.db

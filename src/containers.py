@@ -31,8 +31,8 @@ class Container(containers.DeclarativeContainer):
     config.from_dict(settings.model_dump())
 
     # --- Core Services ---
-    # 1. 創建一個全域唯一的 lock 實例
-    db_lock = providers.Singleton(threading.Lock)
+    # 1. 創建一個全域唯一的 lock 實例 (使用 RLock 避免死鎖)
+    db_lock = providers.Singleton(threading.RLock)
 
     # 2. 創建一個全域唯一的資料庫連接資源
     #    使用 Singleton provider 確保整個應用程式生命週期中只有一個連接。
@@ -43,7 +43,10 @@ class Container(containers.DeclarativeContainer):
         check_same_thread=False,
     )
 
-    # 3. 將創建好的 lock 和 connection 注入到 Database 服務中
+    # 3. 設置 row_factory 以便將行轉換為字典
+    db_connection.add_attributes(row_factory=sqlite3.Row)
+
+    # 4. 將創建好的 lock 和 connection 注入到 Database 服務中
     database = providers.Singleton(
         Database,
         connection=db_connection,
@@ -61,7 +64,7 @@ class Container(containers.DeclarativeContainer):
         gsc_client=gsc_client,
     )
 
-    # 4. 重構 HourlyDatabase 服務，注入 Database 和 GSCClient
+    # 5. 重構 HourlyDatabase 服務，注入 Database 和 GSCClient
     hourly_data_service = providers.Singleton(
         HourlyDatabase,
         db=database,

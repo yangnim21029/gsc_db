@@ -7,12 +7,32 @@
 """
 
 import json
+import logging
 import os
+import socket
+import ssl
 import sys
+import time
+from typing import Dict
+
+import requests
+from rich.console import Console
+
+console = Console()
+logger = logging.getLogger(__name__)
+
 
 try:
-    from src.services.database import Database
-    from src.services.gsc_client import GSCClient
+    # 這些導入用於檢查模塊是否可用
+    import importlib.util
+
+    # 檢查模塊是否可用
+    database_spec = importlib.util.find_spec("src.services.database")
+    gsc_client_spec = importlib.util.find_spec("src.services.gsc_client")
+
+    if not database_spec or not gsc_client_spec:
+        raise ImportError("Required modules not found")
+
 except ImportError as e:
     print(f"❌ 導入模塊失敗: {e}")
     print("請確保所有依賴模塊都存在")
@@ -82,8 +102,12 @@ def check_database_connection():
     print("\n🗄️  檢查數據庫連接...")
 
     try:
-        database = Database()
-        with database.get_connection() as conn:
+        from ..containers import Container
+
+        container = Container()
+        database = container.database()
+        with database._lock:
+            conn = database._connection
             # 檢查主要表格是否存在（使用實際的表格名稱）
             required_tables = [
                 "sites",
@@ -143,7 +167,10 @@ def check_gsc_authentication():
     print("\n🔑 檢查 Google 認證狀態...")
 
     try:
-        gsc_client = GSCClient()
+        from ..containers import Container
+
+        container = Container()
+        gsc_client = container.gsc_client()
 
         if gsc_client.is_authenticated():
             print("  ✅ Google 帳號已認證")
@@ -202,6 +229,152 @@ def check_system_resources():
     except Exception as e:
         print(f"  ❌ 檢查系統資源失敗: {e}")
         return False
+
+
+def check_network_connectivity(timeout: int = 10) -> Dict[str, bool]:
+    """
+    檢查網絡連接狀態
+
+    Args:
+        timeout: 連接超時時間（秒）
+
+    Returns:
+        包含各項檢查結果的字典
+    """
+    results = {
+        "dns_resolution": False,
+        "http_connection": False,
+        "https_connection": False,
+        "google_api_connection": False,
+        "ssl_handshake": False,
+    }
+
+    # 1. DNS 解析檢查
+    try:
+        socket.gethostbyname("google.com")
+        results["dns_resolution"] = True
+        logger.info("✅ DNS 解析正常")
+    except socket.gaierror as e:
+        logger.warning(f"❌ DNS 解析失敗: {e}")
+
+    # 2. HTTP 連接檢查
+    try:
+        response = requests.get("http://httpbin.org/status/200", timeout=timeout)
+        if response.status_code == 200:
+            results["http_connection"] = True
+            logger.info("✅ HTTP 連接正常")
+    except Exception as e:
+        logger.warning(f"❌ HTTP 連接失敗: {e}")
+
+    # 3. HTTPS 連接檢查
+    try:
+        response = requests.get("https://httpbin.org/status/200", timeout=timeout)
+        if response.status_code == 200:
+            results["https_connection"] = True
+            logger.info("✅ HTTPS 連接正常")
+    except Exception as e:
+        logger.warning(f"❌ HTTPS 連接失敗: {e}")
+
+    # 4. Google API 連接檢查
+    try:
+        response = requests.get("https://www.googleapis.com/discovery/v1/apis", timeout=timeout)
+        if response.status_code == 200:
+            results["google_api_connection"] = True
+            logger.info("✅ Google API 連接正常")
+    except Exception as e:
+        logger.warning(f"❌ Google API 連接失敗: {e}")
+
+    # 5. SSL 握手檢查
+    try:
+        context = ssl.create_default_context()
+        with socket.create_connection(("www.google.com", 443), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname="www.google.com"):
+                results["ssl_handshake"] = True
+                logger.info("✅ SSL 握手正常")
+    except Exception as e:
+        logger.warning(f"❌ SSL 握手失敗: {e}")
+
+    return results
+
+
+def diagnose_ssl_issues() -> Dict[str, str]:
+    """
+    診斷 SSL 相關問題
+
+    Returns:
+        診斷結果字典
+    """
+    diagnosis = {
+        "ssl_version": "",
+        "cipher_suites": "",
+        "certificate_validation": "",
+        "recommendations": "",
+    }
+
+    try:
+        # 檢查 SSL 版本
+        diagnosis["ssl_version"] = ssl.OPENSSL_VERSION
+
+        # 檢查可用的密碼套件
+        context = ssl.create_default_context()
+        diagnosis["cipher_suites"] = str(context.get_ciphers()[:5])  # 只顯示前5個
+
+        # 檢查證書驗證
+        try:
+            requests.get("https://www.googleapis.com", timeout=10)
+            diagnosis["certificate_validation"] = "正常"
+        except requests.exceptions.SSLError as e:
+            diagnosis["certificate_validation"] = f"失敗: {e}"
+
+        # 提供建議
+        recommendations = []
+        if "1.1.1" in ssl.OPENSSL_VERSION:
+            recommendations.append("建議升級到 OpenSSL 1.1.1 或更新版本")
+
+        recommendations.extend(
+            [
+                "嘗試使用不同的網絡連接",
+                "檢查防火牆和代理設定",
+                "清除 DNS 緩存",
+                "重新啟動網絡適配器",
+            ]
+        )
+
+        diagnosis["recommendations"] = "; ".join(recommendations)
+
+    except Exception as e:
+        diagnosis["error"] = str(e)
+
+    return diagnosis
+
+
+def wait_for_network_recovery(max_wait_time: int = 60, check_interval: int = 5) -> bool:
+    """
+    等待網絡恢復
+
+    Args:
+        max_wait_time: 最大等待時間（秒）
+        check_interval: 檢查間隔（秒）
+
+    Returns:
+        網絡是否恢復正常
+    """
+    start_time = time.time()
+
+    while time.time() - start_time < max_wait_time:
+        logger.info("正在檢查網絡連接狀態...")
+
+        connectivity = check_network_connectivity(timeout=5)
+
+        if connectivity["google_api_connection"] and connectivity["ssl_handshake"]:
+            logger.info("✅ 網絡連接已恢復")
+            return True
+
+        logger.info(f"網絡尚未恢復，{check_interval} 秒後重試...")
+        time.sleep(check_interval)
+
+    logger.warning("⚠️ 網絡連接在指定時間內未恢復")
+    return False
 
 
 def main():

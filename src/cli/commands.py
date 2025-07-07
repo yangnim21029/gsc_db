@@ -7,10 +7,15 @@ CLI 命令模組
 """
 
 import typer
-from rich.console import Console
 from rich.table import Table
 
 from src.services.database import SyncMode
+from src.utils.rich_console import console
+from src.utils.system_health_check import (
+    check_network_connectivity,
+    diagnose_ssl_issues,
+    wait_for_network_recovery,
+)
 
 # 建立子應用程式
 auth_app = typer.Typer()
@@ -18,7 +23,7 @@ site_app = typer.Typer()
 sync_app = typer.Typer()
 analyze_app = typer.Typer()
 
-console = Console()
+app = typer.Typer()
 
 
 @auth_app.command("login")
@@ -76,6 +81,7 @@ def sync_daily(
     sync_mode: SyncMode = typer.Option(
         SyncMode.SKIP.value, help="同步模式：'skip' (跳過已存在) 或 'overwrite' (覆蓋)。"
     ),
+    max_workers: int = typer.Option(2, help="最大併發工作者數量（建議：1-2）。"),
 ):
     """
     執行每日數據同步。
@@ -94,6 +100,7 @@ def sync_daily(
         site_id=site_id,
         days=days,
         sync_mode=sync_mode,
+        max_workers=max_workers,
     )
 
 
@@ -110,3 +117,76 @@ def analyze_report(
 
     console.print(f"--- 過去 {days} 天網站 ID {site_id} 的性能報告 ---")
     console.print(report)
+
+
+@app.command()
+def network_check():
+    """檢查網絡連接狀態和 SSL 健康狀況"""
+    console.print("🔍 [bold blue]正在檢查網絡連接狀態...[/bold blue]")
+
+    # 檢查網絡連接
+    connectivity = check_network_connectivity()
+
+    # 創建結果表格
+    table = Table(title="網絡連接檢查結果", show_header=True, header_style="bold magenta")
+    table.add_column("檢查項目", style="dim")
+    table.add_column("狀態", justify="center")
+    table.add_column("說明")
+
+    status_items = [
+        ("DNS 解析", connectivity["dns_resolution"], "域名解析是否正常"),
+        ("HTTP 連接", connectivity["http_connection"], "基本 HTTP 連接"),
+        ("HTTPS 連接", connectivity["https_connection"], "安全 HTTPS 連接"),
+        ("Google API", connectivity["google_api_connection"], "Google API 可達性"),
+        ("SSL 握手", connectivity["ssl_handshake"], "SSL/TLS 握手過程"),
+    ]
+
+    for item, status, description in status_items:
+        status_icon = "✅" if status else "❌"
+        status_color = "green" if status else "red"
+        table.add_row(item, f"[{status_color}]{status_icon}[/{status_color}]", description)
+
+    console.print(table)
+
+    # 如果有 SSL 相關問題，提供診斷信息
+    if not connectivity["ssl_handshake"] or not connectivity["google_api_connection"]:
+        console.print("\n🔧 [bold yellow]SSL 診斷信息:[/bold yellow]")
+        diagnosis = diagnose_ssl_issues()
+
+        diag_table = Table(show_header=True, header_style="bold cyan")
+        diag_table.add_column("項目", style="dim")
+        diag_table.add_column("詳情")
+
+        for key, value in diagnosis.items():
+            if key == "recommendations":
+                # 將建議分行顯示
+                recommendations = value.split("; ")
+                diag_table.add_row("建議", "\n".join(f"• {rec}" for rec in recommendations))
+            else:
+                diag_table.add_row(key.replace("_", " ").title(), str(value))
+
+        console.print(diag_table)
+
+        # 提供修復建議
+        console.print("\n💡 [bold green]修復建議:[/bold green]")
+        console.print("1. 檢查網絡連接是否穩定")
+        console.print("2. 嘗試重新運行同步命令")
+        console.print("3. 如果問題持續，請使用 'gsc sync --max-workers 1' 降低並發數")
+        console.print("4. 檢查防火牆和代理設定")
+    else:
+        console.print("\n✅ [bold green]網絡連接正常！[/bold green]")
+
+
+@app.command()
+def wait_network(
+    max_wait: int = typer.Option(60, help="最大等待時間（秒）"),
+    interval: int = typer.Option(5, help="檢查間隔（秒）"),
+):
+    """等待網絡連接恢復"""
+    console.print(f"⏳ [bold blue]等待網絡恢復（最多 {max_wait} 秒）...[/bold blue]")
+
+    if wait_for_network_recovery(max_wait, interval):
+        console.print("✅ [bold green]網絡連接已恢復！[/bold green]")
+    else:
+        console.print("❌ [bold red]網絡連接在指定時間內未恢復[/bold red]")
+        console.print("請檢查網絡設定或聯繫網絡管理員")

@@ -58,9 +58,9 @@ class LogSettings(BaseModel):
 class RetrySettings(BaseModel):
     """API 請求重試相關設定"""
 
-    attempts: int = 3
-    wait_min_seconds: int = 4
-    wait_max_seconds: int = 10
+    attempts: int = 8  # 進一步增加重試次數以處理 SSL 錯誤
+    wait_min_seconds: int = 3  # 增加最小等待時間
+    wait_max_seconds: int = 60  # 增加最大等待時間
 
 
 class SyncSettings(BaseModel):

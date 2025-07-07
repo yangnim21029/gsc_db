@@ -7,6 +7,9 @@ README.md 功能驗證測試
 這個測試套件確保 README.md 中提到的所有功能都能正常工作。
 """
 
+from pathlib import Path
+
+import pytest
 from typer.testing import CliRunner
 
 from src.app import app
@@ -137,3 +140,131 @@ class TestREADMEFunctionality:
         )
         assert result.exit_code == 1
         assert "錯誤" in result.stdout
+
+    def test_readme_just_commands_availability(self):
+        """測試 README.md 中提到的 just 命令是否存在"""
+        justfile_path = Path(__file__).parent.parent / "justfile"
+        if not justfile_path.exists():
+            pytest.skip("justfile 不存在，跳過 just 命令測試")
+
+        justfile_content = justfile_path.read_text()
+
+        # README.md 中提到的主要 just 命令
+        expected_commands = [
+            "bootstrap",
+            "auth",
+            "site-list",
+            "site-add",
+            "sync-site",
+            "sync-multiple",
+            "maintenance",
+            "check",
+            "test",
+            "type-check",
+            "lint",
+            "dev-server",
+            "prod-server",
+            "setup",
+        ]
+
+        for cmd in expected_commands:
+            # 檢查命令是否在 justfile 中定義
+            assert f"{cmd}:" in justfile_content or f"{cmd} " in justfile_content, (
+                f"just {cmd} 命令在 justfile 中未找到"
+            )
+
+    def test_python_module_execution_paths(self):
+        """測試 README.md 中提到的 Python 模組執行路徑"""
+        # 測試模組是否可以作為 Python 模組執行
+        modules_to_test = [
+            "src.analysis.interactive_data_visualizer",
+            "src.analysis.hourly_performance_analyzer",
+        ]
+
+        for module in modules_to_test:
+            try:
+                # 嘗試導入模組以確保路徑正確
+                __import__(module)
+            except ImportError as e:
+                pytest.fail(f"無法導入 README.md 中提到的模組 {module}: {e}")
+
+    def test_gsc_cli_script_availability(self):
+        """測試 gsc-cli 腳本是否可用（通過 poetry.scripts 定義）"""
+        # 檢查 pyproject.toml 中是否定義了 gsc-cli 腳本
+        pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+        if pyproject_path.exists():
+            content = pyproject_path.read_text()
+            assert 'gsc-cli = "src.app:main"' in content, (
+                "gsc-cli 腳本在 pyproject.toml 中未正確定義"
+            )
+
+    def test_api_endpoints_structure(self):
+        """測試 API 端點結構"""
+        from src.web.api import app as api_app
+
+        # 檢查 FastAPI 應用是否正確創建
+        assert api_app is not None
+        assert hasattr(api_app, "routes"), "API 應用缺少路由"
+
+        # 檢查是否有基本路由
+        route_paths = [
+            getattr(route, "path", None) for route in api_app.routes if hasattr(route, "path")
+        ]
+        route_paths = [path for path in route_paths if path is not None]
+        assert len(route_paths) > 0, "API 應用沒有定義任何路由"
+
+    def test_project_structure_requirements(self):
+        """測試項目結構是否符合 README.md 描述"""
+        project_root = Path(__file__).parent.parent
+
+        # 檢查主要目錄結構
+        required_dirs = [
+            "src",
+            "src/analysis",
+            "src/cli",
+            "src/services",
+            "src/utils",
+            "src/web",
+            "tests",
+            "cred",
+            "data",
+            "logs",
+            "reports",
+        ]
+
+        for dir_path in required_dirs:
+            full_path = project_root / dir_path
+            assert full_path.exists(), f"必需的目錄 {dir_path} 不存在"
+
+    def test_development_tools_integration(self):
+        """測試開發工具集成"""
+        project_root = Path(__file__).parent.parent
+
+        # 檢查重要配置文件
+        config_files = ["pyproject.toml", "justfile", ".pre-commit-config.yaml"]
+
+        for config_file in config_files:
+            file_path = project_root / config_file
+            assert file_path.exists(), f"配置文件 {config_file} 不存在"
+
+    def test_readme_command_examples_syntax(self, test_app_runner):
+        """測試 README.md 中的命令示例語法"""
+        runner, test_container = test_app_runner
+
+        # 添加測試站點
+        db_service = test_container.database()
+        site_id = db_service.add_site(domain="sc-domain:test.com", name="Test Site")
+
+        # 測試 README.md 中提到的命令格式
+        test_commands = [
+            # 站點管理
+            ["site", "list"],
+            ["site", "add", "sc-domain:example.com", "--name", "Example Site"],
+            # 分析命令
+            ["analyze", "report", str(site_id), "--days", "7"],
+        ]
+
+        for cmd in test_commands:
+            result = runner.invoke(app, cmd, obj=test_container)
+            # 確保命令不會因為語法錯誤而失敗（exit_code 2）
+            assert result.exit_code != 2, f"命令語法錯誤: {' '.join(cmd)}"

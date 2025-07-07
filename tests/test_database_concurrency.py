@@ -40,7 +40,8 @@ def worker_write_data(
                 connection.execute(
                     """
                     INSERT INTO gsc_performance_data
-                    (site_id, date, page, query, device, search_type, clicks, impressions, ctr, position)
+                    (site_id, date, page, query, device, search_type,
+                     clicks, impressions, ctr, position)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (

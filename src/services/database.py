@@ -8,7 +8,7 @@ import sqlite3
 import threading
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,9 @@ class SyncMode(str, Enum):
 
 
 class Database:
-    def __init__(self, connection: sqlite3.Connection, lock: threading.Lock):
+    def __init__(
+        self, connection: sqlite3.Connection, lock: Union[threading.Lock, threading.RLock]
+    ):
         """初始化數據庫服務，接收共享的連接和鎖。"""
         self._connection = connection
         self._lock = lock

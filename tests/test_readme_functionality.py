@@ -107,7 +107,7 @@ class TestREADMEFunctionality:
         container = Container()
 
         # 測試所有服務都能正常創建
-        db_service = container.db_service()
+        db_service = container.database()
         assert db_service is not None
 
         gsc_client = container.gsc_client()

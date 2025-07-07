@@ -139,6 +139,11 @@ lint:
 ## 使用 pytest 執行測試套件。
 test:
     @echo "🧪 正在使用 pytest 執行測試..."
+    @poetry run pytest
+
+## 使用 pytest 並行執行測試套件（可能在某些情況下會卡住）。
+test-parallel:
+    @echo "🧪 正在使用 pytest 並行執行測試..."
     # -n auto: 使用 pytest-xdist 並行執行
     @poetry run pytest -n auto
 

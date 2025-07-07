@@ -386,16 +386,17 @@ class Database:
         stats = {"inserted": 0, "updated": 0, "skipped": 0}
 
         def row_to_dict(row):
-            # 將 gsc_client 回傳的 Pydantic 模型轉為字典
+            # 將 gsc_client 回傳的字典數據轉為標準格式
+            # GSC 客戶端返回的是字典格式，包含 page, query, clicks, impressions, ctr, position
             return {
-                "clicks": row.clicks,
-                "impressions": row.impressions,
-                "ctr": row.ctr,
-                "position": row.position,
-                "page": row.keys[0],
-                "query": row.keys[1],
-                "device": row.keys[2],
-                "search_type": row.keys[3],
+                "clicks": row.get("clicks", 0),
+                "impressions": row.get("impressions", 0),
+                "ctr": row.get("ctr", 0.0),
+                "position": row.get("position", 0.0),
+                "page": row.get("page", ""),
+                "query": row.get("query", ""),
+                "device": device,
+                "search_type": search_type,
             }
 
         data_to_insert = [row_to_dict(row) for row in chunk]

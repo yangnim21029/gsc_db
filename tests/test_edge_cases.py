@@ -51,7 +51,7 @@ def test_sync_with_api_failure(test_app_runner):
     """
     runner, test_container = test_app_runner
     mock_gsc_client = test_container.gsc_client()
-    db_service = test_container.db_service()
+    db_service = test_container.database()
 
     # 需要先在 db 中有一個站點，同步任務才能啟動
     site_id_to_sync = db_service.add_site(domain="sc-domain:example.com", name="Test Site")
@@ -84,7 +84,7 @@ def test_sync_when_all_data_exists(test_app_runner, monkeypatch):
     測試在 SKIP 模式下，當所有請求的數據都已存在於資料庫時的場景。
     """
     runner, test_container = test_app_runner
-    db_service = test_container.db_service()
+    db_service = test_container.database()
 
     # 準備：在測試資料庫中預先插入一些數據
     site_id_to_sync = db_service.add_site(domain="sc-domain:example.com", name="Test Site")

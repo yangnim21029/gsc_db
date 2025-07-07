@@ -35,10 +35,10 @@ def test_db(tmp_path: Path):
     """
     # --- Setup ---
     db_path = tmp_path / "test.db"
-    # Connect with check_same_thread=False to allow sharing the connection
-    # across threads, which is essential for concurrency tests. The Database
-    # service's internal lock will handle serializing writes.
-    connection = sqlite3.connect(str(db_path), check_same_thread=False)
+    # 設定 isolation_level=None 以啟用自動提交模式。這是防止死鎖的關鍵。
+    # 在此模式下，每個 DML 語句 (INSERT, UPDATE, DELETE) 都會被立即提交，
+    # 從而釋放資料庫鎖，並防止交易在方法呼叫之間保持開啟狀態。
+    connection = sqlite3.connect(str(db_path), check_same_thread=False, isolation_level=None)
     connection.row_factory = sqlite3.Row  # 讓查詢結果可以像字典一樣使用
     # 使用可重入鎖 (RLock)，允許一個執行緒多次獲取同一個鎖。
     # 這對於複雜的操作更安全，因為一個持有鎖的函式可能需要在同一個執行緒中

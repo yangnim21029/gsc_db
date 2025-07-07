@@ -5,7 +5,7 @@
 # GSC Database Manager
 
 <p align="center">
-  企業級 Google Search Console 數據管理與分析工具
+  <strong>完全掌控您的 Google Search Console 數據</strong>
 </p>
 <p align="center">
     <a href="https://github.com/your-username/gsc_db/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/your-username/gsc_db?style=flat-square"></a>
@@ -13,20 +13,64 @@
     <a href="https://github.com/astral-sh/ruff"><img alt="Ruff" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square"></a>
 </p>
 
-> **我們的使命：** 賦予開發者、行銷人員與網站主完全掌控其 Google Search Console 數據的能力。我們相信，長期的數據所有權是解鎖深度洞察、並為網站優化建構下一代 AI 驅動工具的關鍵。
+打破 GSC 16 個月數據限制，建立您專屬的永久數據倉庫。支援自動同步、每小時精細數據、API 服務，為 SEO 分析和 AI 驅動工具提供完整的數據基礎。
 
-本專案提供了一個強大的命令列介面 (CLI) 和 API，用以自動化擷取、儲存和備份您的 GSC 數據，為您打造一個由您自己控制的、永久的個人數據倉庫。
+## 🎯 為什麼選擇 GSC Database Manager？
+
+<table>
+<tr>
+<td width="50%">
+
+**🔒 完全的數據所有權**
+
+- 永久保存歷史數據
+- 本地 SQLite 資料庫
+- 無第三方依賴風險
+
+**⚡ 自動化 & 高效能**
+
+- 智能增量同步
+- 每小時精細數據
+- 企業級錯誤處理
+
+</td>
+<td width="50%">
+
+**🤖 AI/API 就緒**
+
+- 內建 FastAPI 服務
+- 標準化數據格式
+- 支援批量分析
+
+**🛠️ 開發者友好**
+
+- 現代 Python 工具鏈
+- 完整測試覆蓋
+- 詳細文檔指南
+
+</td>
+</tr>
+</table>
 
 ## ✨ 核心功能
 
-- **長期數據所有權**: 打破 GSC 16 個月的數據保留限制，建立您自己的歷史數據檔案庫
-- **自動化數據同步**: 定期擷取 GSC 數據（搜尋分析、每小時數據、網站地圖等）並儲存於本地 SQLite 資料庫
-- **每小時精細數據**: 支援 GSC 的每小時數據 API，提供更精細的時間粒度分析
-- **穩健的備份機制**: 自動建立資料庫的壓縮備份，並清理舊的備份
-- **強大的命令列介面**: 易於使用的指令，涵蓋身份驗證、數據同步與日常維護
-- **API 就緒**: 內建 FastAPI 伺服器，為您的 AI Agent 或 Web UI 提供數據接口
-- **現代化開發工具**: 整合 Ruff、mypy、pytest、pre-commit hooks 等最佳實踐
-- **整合任務執行器**: 附帶預先配置好的 `justfile`，簡化開發與操作流程
+**數據管理**
+
+- 🏆 **長期數據保存**: 突破 GSC 16 個月限制，建立完整歷史檔案
+- 🔄 **智能同步**: 自動增量同步，避免重複數據
+- 📊 **每小時數據**: 支援精細時間粒度分析
+
+**易用性**
+
+- 🚀 **一鍵部署**: `just bootstrap` 完成所有設定
+- 💻 **強大 CLI**: 直觀的命令列介面
+- 🔧 **任務自動化**: 內建維護和備份流程
+
+**擴展性**
+
+- 🌐 **API 服務**: FastAPI 後端，支援自定義應用
+- 📈 **分析工具**: 內建數據視覺化和報告生成
+- 🔌 **模組化**: 易於整合到現有工作流程
 
 ## 🚀 快速開始
 

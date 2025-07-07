@@ -13,14 +13,21 @@
 4. 清晰的數據覆蓋情況和冗餘分析報告。
 
 使用方法：
-# 自動發現 sitemap 並進行分析
-poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14 --days 30
+# 自動發現 sitemap 並進行分析（預設輸出 Excel 到 data/ 資料夾，查詢全部時間）
+poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14
 
 # 手動指定 sitemap URL
 poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14 --sitemap-url "https://example.com/sitemap.xml" --days 30
+
+# 指定自訂輸出路徑（Excel格式）
+poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14 --output-csv "reports/analysis.xlsx" --days 30
+
+# 指定CSV格式（僅冗餘URL）
+poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14 --output-csv "reports/redundant_urls.csv" --days 30
 """
 
 import argparse
+import csv
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -29,12 +36,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import urljoin
 
+import pandas as pd
 import requests
 from lxml import etree
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, track
-from rich.prompt import Prompt
 from rich.table import Table
 
 # 將專案根目錄添加到 sys.path
@@ -66,8 +73,8 @@ class SitemapAnalyzer:
             }
         )
 
-    def discover_and_select_sitemap(self, domain: str, auto_select: bool = True) -> Optional[str]:
-        """從 robots.txt 和常見路徑發現並選擇 sitemap"""
+    def discover_sitemaps(self, domain: str) -> List[str]:
+        """從 robots.txt 和常見路徑發現所有有效的 sitemaps"""
         if not domain.startswith(("http://", "https://")):
             domain = f"https://{domain}"
 
@@ -88,7 +95,7 @@ class SitemapAnalyzer:
         for path in COMMON_SITEMAP_PATHS:
             sitemaps.append(urljoin(domain, path))
 
-        # 3. 驗證並選擇
+        # 3. 驗證所有 sitemaps
         validated_sitemaps = []
         for url in track(set(sitemaps), description="驗證 Sitemap..."):
             try:
@@ -106,27 +113,17 @@ class SitemapAnalyzer:
 
         if not validated_sitemaps:
             console.print("[bold red]❌ 未找到任何有效的 sitemap[/bold red]")
-            return None
+            return []
 
-        if auto_select or len(validated_sitemaps) == 1:
-            selected = validated_sitemaps[0]
-            console.print(f"[bold green]自動選擇: {selected}[/bold green]")
-            return selected
-
-        # 讓用戶選擇
-        table = Table(title="發現的有效 Sitemap")
-        table.add_column("序號", style="cyan")
-        table.add_column("URL", style="blue")
-        for i, sitemap_url in enumerate(validated_sitemaps, 1):
-            table.add_row(str(i), sitemap_url)
-        console.print(table)
-
-        choice = Prompt.ask(
-            "選擇要使用的 sitemap (輸入序號)",
-            choices=[str(i) for i in range(1, len(validated_sitemaps) + 1)],
-            default="1",
+        console.print(
+            f"[bold green]發現 {len(validated_sitemaps)} 個有效的 Sitemaps，將全部使用[/bold green]"
         )
-        return validated_sitemaps[int(choice) - 1]
+        return validated_sitemaps
+
+    def discover_and_select_sitemap(self, domain: str, auto_select: bool = True) -> Optional[str]:
+        """保持向後兼容性的方法，返回第一個發現的 sitemap"""
+        all_sitemaps = self.discover_sitemaps(domain)
+        return all_sitemaps[0] if all_sitemaps else None
 
     def _fetch_and_parse_single_sitemap(self, url: str) -> List[str]:
         """獲取並解析單個 sitemap 或 sitemap 索引，返回 URL 列表"""
@@ -257,7 +254,14 @@ class SitemapAnalyzer:
         return db_pages, coverage_info
 
     def analyze_and_display(
-        self, sitemap_urls: List[str], db_pages: Set[str], site_info: Dict, coverage_info: Dict
+        self,
+        sitemap_urls: List[str],
+        db_pages: Set[str],
+        site_info: Dict,
+        coverage_info: Dict,
+        output_csv_path: Optional[str] = None,
+        site_id: Optional[int] = None,
+        days: Optional[int] = None,
     ):
         """分析冗餘並顯示結果"""
         console.print("\n🔍 正在進行冗餘分析...")
@@ -305,6 +309,194 @@ class SitemapAnalyzer:
 
         console.print(Panel(table, expand=False))
 
+        # 如果提供了輸出路徑，則將詳細分析結果寫入 Excel
+        if output_csv_path:
+            output_path = Path(output_csv_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            try:
+                # 判斷輸出格式：如果檔案副檔名是 .xlsx，則輸出 Excel；否則輸出 CSV
+                if output_path.suffix.lower() == ".xlsx":
+                    if site_id is not None:
+                        self._export_to_excel(
+                            output_path,
+                            sitemap_urls,
+                            urls_in_db,
+                            urls_not_in_db,
+                            site_info,
+                            coverage_info,
+                            redundancy_rate if len(sitemap_set) > 0 else 0,
+                            coverage_rate if len(sitemap_set) > 0 else 0,
+                            site_id,
+                            days,
+                        )
+                    else:
+                        console.print(
+                            "[bold red]錯誤：無法生成Excel檔案，缺少site_id參數[/bold red]"
+                        )
+                else:
+                    # 保持原有的 CSV 格式（只有無數據的 URL）
+                    with open(output_path, "w", newline="", encoding="utf-8") as csvfile:
+                        writer = csv.writer(csvfile)
+                        writer.writerow(["URL"])  # 寫入標頭
+                        for url in sorted(list(urls_not_in_db)):
+                            writer.writerow([url])
+                    console.print(
+                        f"\n💾 [bold green]無數據的冗餘 URL 列表已儲存至: {output_path}[/bold green]"
+                    )
+            except Exception as e:
+                console.print(f"\n[bold red]錯誤：無法寫入檔案 {output_path}: {e}[/bold red]")
+
+    def _export_to_excel(
+        self,
+        output_path: Path,
+        sitemap_urls: List[str],
+        urls_in_db: Set[str],
+        urls_not_in_db: Set[str],
+        site_info: Dict,
+        coverage_info: Dict,
+        redundancy_rate: float,
+        coverage_rate: float,
+        site_id: int,
+        days: Optional[int],
+    ):
+        """將分析結果導出為 Excel 檔案，包含多個工作表"""
+
+        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+            # 工作表1：分析報告摘要
+            summary_data = {
+                "項目": [
+                    "網站名稱",
+                    "網站ID",
+                    "Sitemap 總 URL 數",
+                    "去重後獨立 URL 數",
+                    "有數據的獨立 URL 數",
+                    "✅ 有數據的 Sitemap URL",
+                    "❌ 無數據的 Sitemap URL",
+                    "冗餘率 (%)",
+                    "覆蓋率 (%)",
+                    "查詢時間範圍",
+                    "實際有數據天數",
+                ],
+                "數值": [
+                    site_info.get("name", "未知"),
+                    site_info.get("id", "未知"),
+                    len(sitemap_urls),
+                    len(set(sitemap_urls)),
+                    coverage_info["db_unique_pages"],
+                    len(urls_in_db),
+                    len(urls_not_in_db),
+                    f"{redundancy_rate:.1f}%",
+                    f"{coverage_rate:.1f}%",
+                    coverage_info["queried_days"],
+                    coverage_info["actual_days"],
+                ],
+            }
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_excel(writer, sheet_name="分析報告", index=False)
+
+            # 工作表2：有數據的URL列表
+            if urls_in_db:
+                urls_with_data_df = pd.DataFrame(
+                    {"URL": sorted(list(urls_in_db)), "狀態": ["有數據"] * len(urls_in_db)}
+                )
+                urls_with_data_df.to_excel(writer, sheet_name="有數據的URL", index=False)
+
+            # 工作表3：無數據的URL列表（冗餘）
+            if urls_not_in_db:
+                urls_without_data_df = pd.DataFrame(
+                    {"URL": sorted(list(urls_not_in_db)), "狀態": ["無數據"] * len(urls_not_in_db)}
+                )
+                urls_without_data_df.to_excel(writer, sheet_name="冗餘URL", index=False)
+
+            # 工作表4：完整URL列表
+            all_urls_data = []
+            sitemap_set = set(sitemap_urls)
+            for url in sorted(sitemap_set):
+                status = "有數據" if url in urls_in_db else "無數據"
+                all_urls_data.append({"URL": url, "狀態": status})
+
+            all_urls_df = pd.DataFrame(all_urls_data)
+            all_urls_df.to_excel(writer, sheet_name="完整URL列表", index=False)
+
+            # 工作表5：有數據URL的每月平均表現
+            if urls_in_db:
+                monthly_performance = self._get_monthly_performance(site_id, list(urls_in_db), days)
+                if monthly_performance:
+                    monthly_df = pd.DataFrame(monthly_performance)
+                    monthly_df.to_excel(writer, sheet_name="每月平均表現", index=False)
+
+        console.print(f"\n💾 [bold green]詳細分析報告已儲存至: {output_path}[/bold green]")
+        console.print("📊 Excel 檔案包含以下工作表：")
+        console.print("   • 分析報告 - 摘要統計")
+        console.print("   • 有數據的URL - 在GSC資料庫中有數據的URL")
+        console.print("   • 冗餘URL - 在Sitemap中但GSC資料庫無數據的URL")
+        console.print("   • 完整URL列表 - 所有URL及其狀態")
+        if urls_in_db:
+            console.print("   • 每月平均表現 - 有數據URL的月度表現統計")
+
+    def _get_monthly_performance(
+        self, site_id: int, urls_with_data: List[str], days: Optional[int]
+    ) -> List[Dict]:
+        """獲取有數據URL的每月平均表現"""
+        console.print("\n📈 正在獲取每月平均表現數據...")
+
+        # 構建日期篩選條件
+        date_clause = ""
+        params: List[str] = [str(site_id)]
+
+        if days and days > 0:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            date_clause = "AND date >= ?"
+            params.append(start_date.strftime("%Y-%m-%d"))
+
+        # 創建URL參數佔位符
+        url_placeholders = ",".join("?" * len(urls_with_data))
+        params.extend(urls_with_data)
+
+        # 查詢每月平均表現
+        query = f"""
+        SELECT
+            page,
+            strftime('%Y-%m', date) as month,
+            AVG(clicks) as avg_clicks,
+            AVG(impressions) as avg_impressions,
+            AVG(ctr) as avg_ctr,
+            AVG(position) as avg_position,
+            COUNT(*) as record_count
+        FROM gsc_performance_data
+        WHERE site_id = ? {date_clause}
+        AND page IN ({url_placeholders})
+        GROUP BY page, strftime('%Y-%m', date)
+        ORDER BY page, month
+        """
+
+        try:
+            with self.db._lock:
+                results = self.db._connection.execute(query, params).fetchall()
+
+            performance_data = []
+            for row in results:
+                performance_data.append(
+                    {
+                        "URL": row[0],
+                        "月份": row[1],
+                        "平均點擊數": round(row[2] or 0, 2),
+                        "平均曝光數": round(row[3] or 0, 2),
+                        "平均點擊率": round((row[4] or 0) * 100, 3),  # 轉換為百分比
+                        "平均排名": round(row[5] or 0, 2),
+                        "記錄數": row[6],
+                    }
+                )
+
+            console.print(f"   ✅ 獲取 {len(performance_data)} 條月度表現記錄")
+            return performance_data
+
+        except Exception as e:
+            console.print(f"[red]獲取月度表現數據時發生錯誤: {e}[/red]")
+            return []
+
 
 def main():
     """主執行函數"""
@@ -316,6 +508,19 @@ def main():
     parser.add_argument("--days", type=int, help="查詢天數範圍（可選，預設查詢全部時間）")
     parser.add_argument(
         "--interactive-discovery", action="store_true", help="強制進行交互式 Sitemap 選擇"
+    )
+    parser.add_argument(
+        "--single-sitemap", action="store_true", help="只使用第一個發現的 sitemap（舊行為）"
+    )
+    parser.add_argument(
+        "--output-csv",
+        type=str,
+        help="將分析結果導出到指定檔案 (.xlsx=Excel多工作表, .csv=僅冗餘URL, 預設輸出Excel到data/資料夾)",
+    )
+    parser.add_argument(
+        "--no-smart-discovery",
+        action="store_true",
+        help="暫停智能 Sitemap 發現功能，需要手動指定 --sitemap-url",
     )
 
     args = parser.parse_args()
@@ -340,19 +545,60 @@ def main():
     # 獲取 Sitemap URL
     sitemap_urls_to_fetch = args.sitemap_url
     if not sitemap_urls_to_fetch:
-        domain = site_info["domain"].replace("sc-domain:", "")
-        # 如果使用 --interactive-discovery，則 auto_select 為 False
-        discovered_url = analyzer.discover_and_select_sitemap(
-            domain, auto_select=not args.interactive_discovery
-        )
-        if discovered_url:
-            sitemap_urls_to_fetch = [discovered_url]
-        else:
+        if args.no_smart_discovery:
+            console.print(
+                "[bold yellow]智能 Sitemap 發現功能已暫停，請使用 --sitemap-url 手動指定 Sitemap URL[/bold yellow]"
+            )
+            console.print("範例：--sitemap-url 'https://example.com/sitemap.xml'")
             sys.exit(1)
 
+        domain = site_info["domain"].replace("sc-domain:", "")
+
+        if args.single_sitemap:
+            # 使用舊行為，只選擇一個 sitemap
+            discovered_url = analyzer.discover_and_select_sitemap(
+                domain, auto_select=not args.interactive_discovery
+            )
+            if discovered_url:
+                sitemap_urls_to_fetch = [discovered_url]
+            else:
+                sys.exit(1)
+        else:
+            # 新行為：使用所有發現的 sitemaps
+            discovered_urls = analyzer.discover_sitemaps(domain)
+            if discovered_urls:
+                sitemap_urls_to_fetch = discovered_urls
+            else:
+                sys.exit(1)
+
+    # 統計總 URL 數
     all_sitemap_urls = []
-    for url in sitemap_urls_to_fetch:
-        all_sitemap_urls.extend(analyzer.fetch_sitemap_urls(url))
+    total_urls_from_all_sources = 0
+
+    console.print(f"\n🔍 [bold]開始處理 {len(sitemap_urls_to_fetch)} 個 Sitemap 來源[/bold]")
+
+    for i, url in enumerate(sitemap_urls_to_fetch, 1):
+        console.print(
+            f"\n📄 [bold cyan]處理 Sitemap {i}/{len(sitemap_urls_to_fetch)}:[/bold cyan] {url}"
+        )
+        urls_from_this_source = analyzer.fetch_sitemap_urls(url)
+        if urls_from_this_source:
+            all_sitemap_urls.extend(urls_from_this_source)
+            total_urls_from_all_sources += len(urls_from_this_source)
+            console.print(f"   ✅ 從此來源獲取: {len(urls_from_this_source):,} 個 URL")
+        else:
+            console.print("   ❌ 此來源無法獲取任何 URL")
+
+    # 去重統計
+    unique_urls = set(all_sitemap_urls)
+    console.print("\n📊 [bold green]所有 Sitemap 合併統計:[/bold green]")
+    console.print(f"   🎯 總 URL 數: {total_urls_from_all_sources:,} 個")
+    console.print(f"   🔄 去重後: {len(unique_urls):,} 個")
+    console.print(
+        f"   📉 重複率: {((total_urls_from_all_sources - len(unique_urls)) / total_urls_from_all_sources * 100):.1f}%"
+        if total_urls_from_all_sources > 0
+        else "   📉 重複率: 0%"
+    )
 
     if not all_sitemap_urls:
         console.print("[bold yellow]未能從指定的 Sitemap 中提取任何 URL。[/bold yellow]")
@@ -360,7 +606,23 @@ def main():
 
     db_pages, coverage_info = analyzer.get_db_pages_and_coverage(args.site_id, args.days)
 
-    analyzer.analyze_and_display(all_sitemap_urls, db_pages, site_info, coverage_info)
+    # 如果沒有指定輸出路徑，則預設輸出到 data 資料夾（Excel格式）
+    output_csv_path = args.output_csv
+    if not output_csv_path:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        site_name = site_info.get("name", f"site_{args.site_id}").replace(" ", "_")
+        filename = f"sitemap_redundancy_{site_name}_{timestamp}.xlsx"
+        output_csv_path = f"data/{filename}"
+
+    analyzer.analyze_and_display(
+        all_sitemap_urls,
+        db_pages,
+        site_info,
+        coverage_info,
+        output_csv_path,
+        args.site_id,
+        args.days,
+    )
 
 
 if __name__ == "__main__":

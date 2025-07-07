@@ -91,3 +91,7 @@ demo_optimizations.db
 # cursor
 .cursorrules
 .cursor/
+
+
+# issues
+issues/*

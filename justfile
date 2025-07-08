@@ -341,29 +341,31 @@ nuke: clean-all
 
 # --- 業務腳本 ---
 
-## 從 Sitemap 提取 URL 並分析其成效數據。用法: `just sitemap-analysis --site-id 1 --output-file reports/analysis.csv`
-sitemap-analysis *args:
-    @echo "🔍 正在執行 Sitemap URL 成效分析..."
-    @poetry run python scripts/sitemap_url_performance_exporter.py {{args}}
+## 執行 Sitemap 冗餘分析。用法: `just sitemap-redundancy --site-id 14`
+sitemap-redundancy *args:
+    @echo "🔍 正在執行 Sitemap 冗餘分析..."
+    @poetry run python scripts/sitemap_redundancy_analyzer.py {{args}}
 
 ## 顯示 Sitemap 分析工具的使用幫助
 sitemap-help:
-    @echo "📋 Sitemap URL 成效分析工具使用說明："
+    @echo "📋 Sitemap 冗餘分析工具使用說明："
     @echo ""
     @echo "基本用法："
-    @echo "  just sitemap-analysis --site-id SITE_ID --output-file OUTPUT_FILE"
-    @echo "  just sitemap-analysis --site-url SITE_URL --output-file OUTPUT_FILE"
+    @echo "  just sitemap-redundancy --site-id SITE_ID"
     @echo ""
     @echo "參數說明："
-    @echo "  --site-id SITE_ID        要分析的站點 ID"
-    @echo "  --site-url SITE_URL      要分析的站點 URL (自動查找 ID)"
-    @echo "  --sitemap-url SITEMAP    指定 Sitemap URL (可選，會自動發現)"
-    @echo "  --output-file OUTPUT     輸出 CSV 檔案路徑"
-    @echo "  --days DAYS              查詢天數 (預設：30天)"
+    @echo "  --site-id SITE_ID              要分析的網站 ID"
+    @echo "  --sitemap-url SITEMAP_URL      手動指定 Sitemap URL（可多次使用）"
+    @echo "  --days DAYS                    查詢天數範圍（預設查詢全部時間）"
+    @echo "  --output-csv OUTPUT_CSV        輸出檔案路徑（預設輸出Excel到data/資料夾）"
+    @echo "  --interactive-discovery        強制進行交互式 Sitemap 選擇"
+    @echo "  --single-sitemap              只使用第一個發現的 sitemap"
+    @echo "  --no-smart-discovery          暫停智能 Sitemap 發現功能"
     @echo ""
     @echo "範例："
-    @echo "  just sitemap-analysis --site-id 1 --output-file scripts/reports/site1_analysis.csv"
-    @echo "  just sitemap-analysis --site-url 'https://example.com' --output-file scripts/reports/example_analysis.csv --days 60"
+    @echo "  just sitemap-redundancy --site-id 14"
+    @echo "  just sitemap-redundancy --site-id 14 --days 30"
+    @echo "  just sitemap-redundancy --site-id 14 --output-csv 'reports/analysis.xlsx'"
     @echo ""
     @echo "完整幫助："
-    @poetry run python scripts/sitemap_url_performance_exporter.py --help
+    @poetry run python scripts/sitemap_redundancy_analyzer.py --help

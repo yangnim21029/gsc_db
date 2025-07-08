@@ -17,13 +17,16 @@
 poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14
 
 # 手動指定 sitemap URL
-poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14 --sitemap-url "https://example.com/sitemap.xml" --days 30
+poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14 \
+    --sitemap-url "https://example.com/sitemap.xml" --days 30
 
 # 指定自訂輸出路徑（Excel格式）
-poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14 --output-csv "reports/analysis.xlsx" --days 30
+poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14 \
+    --output-csv "reports/analysis.xlsx" --days 30
 
 # 指定CSV格式（僅冗餘URL）
-poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14 --output-csv "reports/redundant_urls.csv" --days 30
+poetry run python scripts/sitemap_redundancy_analyzer.py --site-id 14 \
+    --output-csv "reports/redundant_urls.csv" --days 30
 """
 
 import argparse
@@ -34,7 +37,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
 
 import pandas as pd
 import requests
@@ -342,7 +345,8 @@ class SitemapAnalyzer:
                         for url in sorted(list(urls_not_in_db)):
                             writer.writerow([url])
                     console.print(
-                        f"\n💾 [bold green]無數據的冗餘 URL 列表已儲存至: {output_path}[/bold green]"
+                        f"\n💾 [bold green]無數據的冗餘 URL 列表已儲存至: "
+                        f"{output_path}[/bold green]"
                     )
             except Exception as e:
                 console.print(f"\n[bold red]錯誤：無法寫入檔案 {output_path}: {e}[/bold red]")
@@ -369,10 +373,10 @@ class SitemapAnalyzer:
                     "網站名稱",
                     "網站ID",
                     "Sitemap 總 URL 數",
-                    "去重後獨立 URL 數",
-                    "有數據的獨立 URL 數",
-                    "✅ 有數據的 Sitemap URL",
-                    "❌ 無數據的 Sitemap URL",
+                    "Sitemap 去重後獨立 URL 數",
+                    "GSC performace 中的獨立 URL 數",
+                    "✅ 擁有 GSC performace 的 URL（Sitemap）",
+                    "❌ 沒有 GSC performace 數據的  URL（Sitemap）",
                     "冗餘率 (%)",
                     "覆蓋率 (%)",
                     "查詢時間範圍",
@@ -397,43 +401,120 @@ class SitemapAnalyzer:
 
             # 工作表2：有數據的URL列表
             if urls_in_db:
+                # 對 URL 進行編碼
+                encoded_urls = [
+                    quote(url, safe=":/?#[]@!$&'()*+,;=") for url in sorted(list(urls_in_db))
+                ]
                 urls_with_data_df = pd.DataFrame(
-                    {"URL": sorted(list(urls_in_db)), "狀態": ["有數據"] * len(urls_in_db)}
+                    {"URL": encoded_urls, "狀態": ["有數據"] * len(urls_in_db)}
                 )
-                urls_with_data_df.to_excel(writer, sheet_name="有數據的URL", index=False)
+                urls_with_data_df.to_excel(
+                    writer, sheet_name="有 GSC performace 的 URL", index=False
+                )
 
             # 工作表3：無數據的URL列表（冗餘）
             if urls_not_in_db:
+                # 對 URL 進行編碼
+                encoded_urls = [
+                    quote(url, safe=":/?#[]@!$&'()*+,;=") for url in sorted(list(urls_not_in_db))
+                ]
                 urls_without_data_df = pd.DataFrame(
-                    {"URL": sorted(list(urls_not_in_db)), "狀態": ["無數據"] * len(urls_not_in_db)}
+                    {"URL": encoded_urls, "狀態": ["無數據"] * len(urls_not_in_db)}
                 )
-                urls_without_data_df.to_excel(writer, sheet_name="冗餘URL", index=False)
+                urls_without_data_df.to_excel(
+                    writer, sheet_name="無 GSC performace URL", index=False
+                )
 
-            # 工作表4：完整URL列表
-            all_urls_data = []
-            sitemap_set = set(sitemap_urls)
-            for url in sorted(sitemap_set):
-                status = "有數據" if url in urls_in_db else "無數據"
-                all_urls_data.append({"URL": url, "狀態": status})
-
-            all_urls_df = pd.DataFrame(all_urls_data)
-            all_urls_df.to_excel(writer, sheet_name="完整URL列表", index=False)
-
-            # 工作表5：有數據URL的每月平均表現
+            # 工作表4：每月平均表現表
             if urls_in_db:
                 monthly_performance = self._get_monthly_performance(site_id, list(urls_in_db), days)
                 if monthly_performance:
                     monthly_df = pd.DataFrame(monthly_performance)
-                    monthly_df.to_excel(writer, sheet_name="每月平均表現", index=False)
+                    monthly_df.to_excel(writer, sheet_name="每月平均表現表", index=False)
+
+                    # 設置 Excel 格式，讓關鍵字欄位支持換行顯示
+                    worksheet = writer.sheets["每月平均表現表"]
+
+                    # 找到關鍵字欄位的索引
+                    if monthly_performance:
+                        columns = list(monthly_performance[0].keys())
+                        if "關鍵字" in columns:
+                            keyword_col_idx = columns.index("關鍵字") + 1  # Excel 列索引從1開始
+
+                            # 設置關鍵字欄位的格式
+                            for row_idx in range(
+                                2, len(monthly_performance) + 2
+                            ):  # 從第2行開始（跳過標題行）
+                                cell = worksheet.cell(row=row_idx, column=keyword_col_idx)
+                                cell.alignment = cell.alignment.copy(wrapText=True)
+
+                            # 設置欄位寬度
+                            worksheet.column_dimensions[
+                                chr(ord("A") + keyword_col_idx - 1)
+                            ].width = 50
+
+            # 應用樣式
+            self._apply_excel_styles(writer)
 
         console.print(f"\n💾 [bold green]詳細分析報告已儲存至: {output_path}[/bold green]")
         console.print("📊 Excel 檔案包含以下工作表：")
         console.print("   • 分析報告 - 摘要統計")
-        console.print("   • 有數據的URL - 在GSC資料庫中有數據的URL")
-        console.print("   • 冗餘URL - 在Sitemap中但GSC資料庫無數據的URL")
-        console.print("   • 完整URL列表 - 所有URL及其狀態")
-        if urls_in_db:
-            console.print("   • 每月平均表現 - 有數據URL的月度表現統計")
+        console.print("   • 有 GSC performace 的 URL - 在GSC資料庫中有數據的URL")
+        console.print("   • 無 GSC performace URL - 在Sitemap中但GSC資料庫無數據的URL")
+        console.print("   • 每月平均表現表 - 有數據URL的月度表現統計")
+
+    def _apply_excel_styles(self, writer):
+        """為 Excel 檔案應用樣式"""
+        from openpyxl.styles import Alignment, Font, PatternFill
+
+        # 定義樣式
+        header_font = Font(bold=True, color="FFFFFF")  # 粗體白字
+        header_fill = PatternFill(
+            start_color="000000", end_color="000000", fill_type="solid"
+        )  # 黑底
+
+        highlight_font = Font(color="000000")  # 黑字
+        highlight_fill = PatternFill(
+            start_color="FFFF00", end_color="FFFF00", fill_type="solid"
+        )  # 螢光筆背景（黃色）
+
+        # 應用樣式到所有工作表
+        for sheet_name in writer.sheets:
+            worksheet = writer.sheets[sheet_name]
+
+            # 為 header 行添加樣式（第一行）
+            for cell in worksheet[1]:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+
+            # 為分析報告中的特定行添加螢光筆樣式
+            if sheet_name == "分析報告":
+                for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row):
+                    item_cell = row[0]  # 項目欄位
+                    value_cell = row[1]  # 數值欄位
+
+                    # 檢查是否為冗餘率或覆蓋率
+                    if item_cell.value and (
+                        "冗餘率" in str(item_cell.value) or "覆蓋率" in str(item_cell.value)
+                    ):
+                        item_cell.font = highlight_font
+                        item_cell.fill = highlight_fill
+                        value_cell.font = highlight_font
+                        value_cell.fill = highlight_fill
+
+            # 調整列寬
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except (TypeError, AttributeError):
+                        pass
+                adjusted_width = min(max_length + 2, 50)  # 最大寬度限制為50
+                worksheet.column_dimensions[column_letter].width = adjusted_width
 
     def _get_monthly_performance(
         self, site_id: int, urls_with_data: List[str], days: Optional[int]
@@ -455,16 +536,18 @@ class SitemapAnalyzer:
         url_placeholders = ",".join("?" * len(urls_with_data))
         params.extend(urls_with_data)
 
-        # 查詢每月平均表現
+        # 查詢每月平均表現（修改為加總點擊數和曝光數，並新增關鍵字相關欄位）
         query = f"""
         SELECT
             page,
             strftime('%Y-%m', date) as month,
-            AVG(clicks) as avg_clicks,
-            AVG(impressions) as avg_impressions,
+            SUM(clicks) as total_clicks,
+            SUM(impressions) as total_impressions,
             AVG(ctr) as avg_ctr,
             AVG(position) as avg_position,
-            COUNT(*) as record_count
+            COUNT(*) as record_count,
+            REPLACE(GROUP_CONCAT(DISTINCT query), ',', CHAR(10)) as keywords,
+            COUNT(DISTINCT query) as keyword_count
         FROM gsc_performance_data
         WHERE site_id = ? {date_clause}
         AND page IN ({url_placeholders})
@@ -478,15 +561,20 @@ class SitemapAnalyzer:
 
             performance_data = []
             for row in results:
+                # 對 URL 進行編碼
+                encoded_url = quote(row[0], safe=":/?#[]@!$&'()*+,;=")
+
                 performance_data.append(
                     {
-                        "URL": row[0],
+                        "URL": encoded_url,
                         "月份": row[1],
-                        "平均點擊數": round(row[2] or 0, 2),
-                        "平均曝光數": round(row[3] or 0, 2),
+                        "總點擊數": int(row[2] or 0),
+                        "總曝光數": int(row[3] or 0),
                         "平均點擊率": round((row[4] or 0) * 100, 3),  # 轉換為百分比
                         "平均排名": round(row[5] or 0, 2),
                         "記錄數": row[6],
+                        "關鍵字": row[7] or "",
+                        "關鍵字數": row[8] or 0,
                     }
                 )
 
@@ -515,7 +603,8 @@ def main():
     parser.add_argument(
         "--output-csv",
         type=str,
-        help="將分析結果導出到指定檔案 (.xlsx=Excel多工作表, .csv=僅冗餘URL, 預設輸出Excel到data/資料夾)",
+        help="將分析結果導出到指定檔案 (.xlsx=Excel多工作表, .csv=僅冗餘URL, "
+        "預設輸出Excel到data/資料夾)",
     )
     parser.add_argument(
         "--no-smart-discovery",
@@ -547,7 +636,8 @@ def main():
     if not sitemap_urls_to_fetch:
         if args.no_smart_discovery:
             console.print(
-                "[bold yellow]智能 Sitemap 發現功能已暫停，請使用 --sitemap-url 手動指定 Sitemap URL[/bold yellow]"
+                "[bold yellow]智能 Sitemap 發現功能已暫停，請使用 --sitemap-url "
+                "手動指定 Sitemap URL[/bold yellow]"
             )
             console.print("範例：--sitemap-url 'https://example.com/sitemap.xml'")
             sys.exit(1)
@@ -594,11 +684,13 @@ def main():
     console.print("\n📊 [bold green]所有 Sitemap 合併統計:[/bold green]")
     console.print(f"   🎯 總 URL 數: {total_urls_from_all_sources:,} 個")
     console.print(f"   🔄 去重後: {len(unique_urls):,} 個")
-    console.print(
-        f"   📉 重複率: {((total_urls_from_all_sources - len(unique_urls)) / total_urls_from_all_sources * 100):.1f}%"
-        if total_urls_from_all_sources > 0
-        else "   📉 重複率: 0%"
-    )
+    if total_urls_from_all_sources > 0:
+        duplicate_rate = (
+            (total_urls_from_all_sources - len(unique_urls)) / total_urls_from_all_sources * 100
+        )
+        console.print(f"   📉 重複率: {duplicate_rate:.1f}%")
+    else:
+        console.print("   📉 重複率: 0%")
 
     if not all_sitemap_urls:
         console.print("[bold yellow]未能從指定的 Sitemap 中提取任何 URL。[/bold yellow]")

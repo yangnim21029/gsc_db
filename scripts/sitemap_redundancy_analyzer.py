@@ -37,7 +37,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
-from urllib.parse import quote, urljoin
+from urllib.parse import quote, unquote, urljoin
 
 import pandas as pd
 import requests
@@ -195,8 +195,8 @@ class SitemapAnalyzer:
         console.print(f"   🎯 Sitemap 總 URL 數: {len(urls):,} 個")
         console.print(f"   📄 來源: {sitemap_url}")
 
-        # 對從 Sitemap 提取的 URL 進行編碼，以匹配資料庫中的格式
-        encoded_urls = [quote(url.strip(), safe=":/?#[]@!$&'()*+,;=") for url in urls]
+        # URL 標準化：先解碼再編碼，以處理 sitemap 中可能已編碼或未編碼的 URL
+        encoded_urls = [quote(unquote(url.strip()), safe=":/?#[]@!$&'()*+,;=") for url in urls]
         return encoded_urls
 
     def get_db_pages_and_coverage(self, site_id: int, days: Optional[int]) -> Tuple[Set[str], dict]:

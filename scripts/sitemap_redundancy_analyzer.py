@@ -194,7 +194,10 @@ class SitemapAnalyzer:
         console.print("\n📊 [bold]Sitemap URL 提取結果[/bold]")
         console.print(f"   🎯 Sitemap 總 URL 數: {len(urls):,} 個")
         console.print(f"   📄 來源: {sitemap_url}")
-        return urls
+
+        # 對從 Sitemap 提取的 URL 進行編碼，以匹配資料庫中的格式
+        encoded_urls = [quote(url.strip(), safe=":/?#[]@!$&'()*+,;=") for url in urls]
+        return encoded_urls
 
     def get_db_pages_and_coverage(self, site_id: int, days: Optional[int]) -> Tuple[Set[str], dict]:
         """一次性獲取資料庫中的不重複頁面及數據覆蓋情況"""
@@ -401,12 +404,9 @@ class SitemapAnalyzer:
 
             # 工作表2：有數據的URL列表
             if urls_in_db:
-                # 對 URL 進行編碼
-                encoded_urls = [
-                    quote(url, safe=":/?#[]@!$&'()*+,;=") for url in sorted(list(urls_in_db))
-                ]
+                # URL 已經在資料庫中是編碼格式，不需要再次編碼
                 urls_with_data_df = pd.DataFrame(
-                    {"URL": encoded_urls, "狀態": ["有數據"] * len(urls_in_db)}
+                    {"URL": sorted(list(urls_in_db)), "狀態": ["有數據"] * len(urls_in_db)}
                 )
                 urls_with_data_df.to_excel(
                     writer, sheet_name="有 GSC performace 的 URL", index=False
@@ -414,12 +414,9 @@ class SitemapAnalyzer:
 
             # 工作表3：無數據的URL列表（冗餘）
             if urls_not_in_db:
-                # 對 URL 進行編碼
-                encoded_urls = [
-                    quote(url, safe=":/?#[]@!$&'()*+,;=") for url in sorted(list(urls_not_in_db))
-                ]
+                # Sitemap URL 通常也是編碼格式，不需要再次編碼
                 urls_without_data_df = pd.DataFrame(
-                    {"URL": encoded_urls, "狀態": ["無數據"] * len(urls_not_in_db)}
+                    {"URL": sorted(list(urls_not_in_db)), "狀態": ["無數據"] * len(urls_not_in_db)}
                 )
                 urls_without_data_df.to_excel(
                     writer, sheet_name="無 GSC performace URL", index=False
@@ -561,12 +558,10 @@ class SitemapAnalyzer:
 
             performance_data = []
             for row in results:
-                # 對 URL 進行編碼
-                encoded_url = quote(row[0], safe=":/?#[]@!$&'()*+,;=")
-
+                # URL 已經在資料庫中是編碼格式，不需要再次編碼
                 performance_data.append(
                     {
-                        "URL": encoded_url,
+                        "URL": row[0],
                         "月份": row[1],
                         "總點擊數": int(row[2] or 0),
                         "總曝光數": int(row[3] or 0),

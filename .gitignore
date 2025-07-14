@@ -50,6 +50,7 @@ venv/
 # IMPORTANT: Never commit your API credentials or tokens!
 cred/sync_state.json
 cred/credentials.json
+cred/client_secret.json
 token.json
 credentials.json # Also ignore if in root
 

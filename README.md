@@ -101,6 +101,72 @@ brew install just poetry
 pipx install poetry
 ```
 
+#### Windows 系統安裝指南
+
+**Step 1: 安裝 Python 3.11+**
+- 前往 [Python 官網](https://www.python.org/downloads/) 下載 Python 3.11 或更新版本
+- 安裝時請勾選「Add Python to PATH」
+
+**Step 2: 安裝 Poetry**
+```powershell
+# 使用 PowerShell 安裝 Poetry
+(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+
+# 或使用 pip 安裝
+pip install poetry
+```
+
+**Step 3: 安裝 Just (任務執行器)**
+
+選擇以下其中一種方法安裝 Just：
+
+```powershell
+# 方法 1: 使用 Scoop (推薦)
+# 先安裝 Scoop
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+irm get.scoop.sh | iex
+# 然後安裝 Just
+scoop install just
+
+# 方法 2: 使用 Chocolatey
+choco install just
+
+# 方法 3: 使用 Cargo (如果已安裝 Rust)
+cargo install just
+
+# 方法 4: 手動下載 (如果其他方法都不行)
+# 前往 https://github.com/casey/just/releases
+# 下載 just-*-x86_64-pc-windows-msvc.zip
+# 解壓並將 just.exe 放入 PATH 目錄
+```
+
+**Step 4: 驗證安裝**
+```powershell
+# 檢查所有工具是否正確安裝
+python --version    # 應顯示 Python 3.11+
+poetry --version    # 應顯示 Poetry 版本
+just --version      # 應顯示 Just 版本
+```
+
+#### Linux 系統安裝指南
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install python3.11 python3-pip
+pip3 install poetry
+
+# 安裝 Just
+curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/bin
+# 或使用 Cargo
+cargo install just
+
+# CentOS/RHEL/Fedora
+dnf install python3.11 python3-pip
+pip3 install poetry
+cargo install just
+```
+
 ### 安裝步驟
 
 1.  **複製倉庫**
@@ -115,7 +181,12 @@ pipx install poetry
     此指令將使用 Poetry 安裝所有依賴，並引導您完成首次 Google API 身份驗證：
 
     ```bash
+    # macOS / Linux / Windows (如果已安裝 Just)
     just bootstrap
+
+    # Windows 替代方案 (如果 Just 安裝有問題)
+    # 雙擊 setup.bat 檔案，或在 PowerShell/CMD 中執行：
+    setup.bat
     ```
 
 3.  **設定 Google API 認證**
@@ -126,9 +197,22 @@ pipx install poetry
     2. 建立新專案或選擇現有專案
     3. 啟用 **Google Search Console API**：
        - 前往「APIs & Services」→「Library」
-       - 搜尋「Google Search Console API」
-       - 點擊「啟用」
-    4. 建立 OAuth 2.0 憑證：
+       - 搜尋「Google Search Console API」或「Search Console API」
+       - 點擊「Google Search Console API」結果
+       - 點擊「啟用 (Enable)」按鈕
+       - ⚠️ **重要**：請確保 API 狀態顯示為「已啟用」
+       - 如果找不到 API，請確認您已選擇正確的 Google Cloud 專案
+    4. **設定 OAuth 同意畫面** (必要步驟)：
+       - 前往「APIs & Services」→「OAuth consent screen」
+       - 選擇「External」用戶類型 (個人使用者) 或「Internal」(組織內部)
+       - 填寫必要資訊：
+         - **App name**: GSC Database Manager (或您偏好的名稱)
+         - **User support email**: 您的 Gmail 地址
+         - **Developer contact information**: 您的 Gmail 地址
+       - 在「Scopes」頁面，無需新增額外範圍 (使用預設即可)
+       - 在「Test users」頁面，添加您要使用此應用的 Gmail 帳號
+       - 完成設定並儲存
+    5. 建立 OAuth 2.0 憑證：
        - 前往「APIs & Services」→「Credentials」
        - 點擊「+ CREATE CREDENTIALS」→「OAuth client ID」
        - 選擇「Desktop application」
@@ -156,6 +240,60 @@ pipx install poetry
     5. 將授權碼貼回終端機以完成認證
 
     這是一個**手動複製授權碼**的認證流程，不需要啟動本地服務器。
+
+### 🔧 常見設定問題與解決方案
+
+#### Windows 系統特別注意事項
+
+1. **PowerShell 執行政策問題**
+   ```powershell
+   # 如果遇到執行政策錯誤，執行以下命令
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   ```
+
+2. **路徑分隔符號**
+   ```powershell
+   # Windows 使用反斜線，設定憑證時使用以下路徑格式
+   cp "C:\Users\YourName\Downloads\client_secret_xxxxx.json" "cred\client_secret.json"
+   ```
+
+#### 常見錯誤與解決方法
+
+**❌ 錯誤：「API 未啟用」**
+- **解決方案**：確認已在 Google Cloud Console 啟用 Google Search Console API
+- 檢查步驟：前往 APIs & Services → Dashboard，確認 API 顯示在已啟用列表中
+
+**❌ 錯誤：「憑證檔案不存在」**
+- **解決方案**：確認 `client_secret.json` 位於 `cred/` 目錄下
+- 檢查命令：`ls cred/` (macOS/Linux) 或 `dir cred` (Windows)
+
+**❌ 錯誤：「OAuth 同意畫面未設定」**
+- **解決方案**：完成 OAuth consent screen 設定 (見上方步驟 4)
+- 確認您的 Gmail 帳號已添加為測試使用者
+
+**❌ 錯誤：「權限被拒絕」**
+- **解決方案**：確認您的 Google 帳號有權存取要同步的網站
+- 在 Google Search Console 中確認該網站的擁有者或使用者權限
+
+**❌ Just 命令不存在 (Windows)**
+- **解決方案**：
+  1. 重新安裝 Just (參考上方 Windows 安裝指南)
+  2. 使用 Windows 批次檔案：雙擊 `setup.bat` 進行初始化
+  3. 或使用替代命令：`poetry run python -m src.app [參數]`
+
+#### 驗證設定是否正確
+
+完成設定後，執行以下命令驗證：
+
+```bash
+# 1. 檢查專案結構
+just init
+
+# 2. 驗證認證
+just site-list
+
+# 3. 如果一切正常，應該會看到您 GSC 帳號中的網站列表
+```
 
 ## 🎯 基本用法
 

@@ -6,7 +6,7 @@
 # - 執行 `just --list` 或 `just -l` 來查看所有可用的指令。
 # ==============================================================================
 
-# 設定 shell 為 bash，以獲得更強大且一致的腳本功能。
+# 設定 shell，對 Windows 和 Unix 系統提供相容性
 set shell := ["bash", "-c"]
 
 # 如果存在 .env 檔案，則從中載入環境變數。
@@ -24,13 +24,18 @@ BACKUP_DIR := `poetry run python -c "from src.config import settings; print(sett
 default:
     @just --list
 
+## 初始化專案目錄結構和環境檢查。
+init:
+    @echo "🔧 正在初始化專案環境..."
+    @python setup.py
+
 ## 使用 Poetry 安裝所有專案依賴。
 setup:
     @echo "📦 正在安裝專案依賴..."
     @poetry install
 
-## 首次設定專案 (安裝依賴並進行認證)。
-bootstrap: setup auth
+## 首次設定專案 (初始化環境、安裝依賴並進行認證)。
+bootstrap: init setup auth
     @echo "🚀 專案設定與認證完成！一切準備就緒。"
 
 ## 執行 Google API 認證流程。
@@ -64,35 +69,153 @@ site-add site_url:
 
 ## 為特定網站在指定天數內同步資料。 用法: `just sync-site <site_id> [days]`
 sync-site site_id days='7':
+    @echo "🔄 正在為網站 ID '{{site_id}}' 同步過去 '{{days}}' 天的資料..."
+    @echo "📊 第1步：同步日級數據..."
+    @poetry run gsc-cli sync daily --site-id {{site_id}} --days {{days}} --max-workers 2
+    @{{ if os() == "windows" { `
+        $hourlyDays = [Math]::Min([int]"{{days}}", 3);
+        Write-Host "⏰ 第2步：同步小時級數據（過去 $hourlyDays 天）...";
+        try {
+            poetry run gsc-cli sync hourly {{site_id}} --days $hourlyDays;
+        } catch {
+            Write-Host "⚠️ 小時級數據同步失敗，已跳過";
+        }
+    ` } else { `
+        HOURLY_DAYS=$([ "{{days}}" -gt "3" ] && echo "3" || echo "{{days}}")
+        echo "⏰ 第2步：同步小時級數據（過去 $HOURLY_DAYS 天）..."
+        poetry run gsc-cli sync hourly {{site_id}} --days $HOURLY_DAYS || echo "⚠️ 小時級數據同步失敗，已跳過"
+    ` } }}
+    @echo "✅ 網站 ID '{{site_id}}' 的完整數據同步完成！"
+
+## 迴圈同步多個網站。 用法: `just sync-multiple "1 3 5" [days]`
+sync-multiple site_list days='7':
     #!/usr/bin/env bash
-    set -euo pipefail
+    echo "🚀 開始批次同步網站: [{{site_list}}] ({{days}} 天)"
+    sites=({{site_list}})
+    success_count=0
+    failure_count=0
+    failed_sites=()
 
-    echo "🔄 正在為網站 ID '{{site_id}}' 同步過去 '{{days}}' 天的資料..."
+    echo "📊 共需同步 ${#sites[@]} 個網站"
+    echo ""
 
-    # 1. 同步日級數據
-    echo "📊 第1步：同步日級數據..."
-    script -q /dev/null poetry run gsc-cli sync daily --site-id {{site_id}} --days {{days}} --max-workers 2
+    for i in "${!sites[@]}"; do
+        site="${sites[$i]}"
+        if [ ! -z "$site" ]; then
+            current_index=$((i + 1))
+            echo "--- 正在同步網站 ID: $site (進度: $current_index/${#sites[@]}) ---"
 
-    # 2. 同步小時級數據（最近幾天）
-    HOURLY_DAYS=$([ "{{days}}" -gt "3" ] && echo "3" || echo "{{days}}")
-    echo "⏰ 第2步：同步小時級數據（過去 $HOURLY_DAYS 天）..."
-    script -q /dev/null poetry run gsc-cli sync hourly {{site_id}} --days $HOURLY_DAYS || echo "⚠️ 小時級數據同步失敗，已跳過"
-
-    echo "✅ 網站 ID '{{site_id}}' 的完整數據同步完成！"
-
-## 迴圈同步多個網站。 用法: `just sync-multiple "1 3 5"`
-sync-multiple site_list:
-    #!/bin/bash
-    echo "🚀 開始批次同步網站: [{{site_list}}]"
-    for site in {{site_list}}; do
-        echo "---"
-        just sync-site $site 7
+            # 執行同步
+            start_time=$(date +%s)
+            if just sync-site "$site" {{days}}; then
+                end_time=$(date +%s)
+                duration=$((end_time - start_time))
+                success_count=$((success_count + 1))
+                echo "✅ 網站 ID $site 同步成功 (耗時: ${duration}秒)"
+            else
+                end_time=$(date +%s)
+                duration=$((end_time - start_time))
+                failure_count=$((failure_count + 1))
+                failed_sites+=("$site")
+                echo "❌ 網站 ID $site 同步失敗 (耗時: ${duration}秒)"
+            fi
+            echo ""
+        fi
     done
-    echo "✅ 所有指定網站的批次同步已完成。"
+
+    echo "📈 批次同步完成！"
+    echo "  ✅ 成功: $success_count 個網站"
+    echo "  ❌ 失敗: $failure_count 個網站"
+
+    if [ $failure_count -gt 0 ]; then
+        echo "  🔧 失敗的網站ID: ${failed_sites[*]}"
+        echo ""
+        echo "💡 建議處理失敗的網站:"
+        echo "  just network-check                    # 檢查網絡連接"
+        echo "  just conservative-sync <site_id>      # 使用保守模式重試"
+        echo "  just sync-status <site_id>            # 檢查具體狀態"
+    fi
 
 ## 使用自訂參數執行通用的同步指令。
 sync-custom *ARGS:
     poetry run gsc-cli sync {{ARGS}}
+
+## 查看同步狀態和進度監控。 用法: `just sync-status [site_id]`
+sync-status site_id="":
+    #!/usr/bin/env bash
+    if [ "{{site_id}}" != "" ]; then
+        poetry run gsc-cli sync status --site-id {{site_id}}
+    else
+        poetry run gsc-cli sync status
+    fi
+
+## Windows 優化的批次同步命令，更好的錯誤處理。用法: `just batch-sync "1 2 3" [days]`
+batch-sync site_list days='7':
+    @{{ if os() == "windows" { `
+        Write-Host "🚀 Windows 優化批次同步開始: [{{site_list}}] ({{days}} 天)" -ForegroundColor Green;
+        $sites = "{{site_list}}".Split(" ") | Where-Object { $_.Trim() -ne "" };
+        $logFile = "data/logs/batch_sync_$(Get-Date -Format 'yyyyMMdd_HHmmss').log";
+        New-Item -Path (Split-Path $logFile -Parent) -ItemType Directory -Force | Out-Null;
+
+        Write-Host "📝 同步日誌將保存到: $logFile";
+        "批次同步開始: $(Get-Date)" | Out-File -FilePath $logFile -Encoding UTF8;
+
+        foreach ($site in $sites) {
+            $siteId = $site.Trim();
+            if ($siteId -ne "") {
+                Write-Host "🔄 開始同步網站 ID: $siteId" -ForegroundColor Cyan;
+                "開始同步網站 ID: $siteId - $(Get-Date)" | Out-File -FilePath $logFile -Append -Encoding UTF8;
+
+                try {
+                    poetry run gsc-cli sync daily --site-id $siteId --days {{days}} --max-workers 1;
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "✅ 網站 ID $siteId 同步成功" -ForegroundColor Green;
+                        "成功: 網站 ID $siteId - $(Get-Date)" | Out-File -FilePath $logFile -Append -Encoding UTF8;
+                    } else {
+                        Write-Host "❌ 網站 ID $siteId 同步失敗 (退出碼: $LASTEXITCODE)" -ForegroundColor Red;
+                        "失敗: 網站 ID $siteId (退出碼: $LASTEXITCODE) - $(Get-Date)" | Out-File -FilePath $logFile -Append -Encoding UTF8;
+                    }
+                } catch {
+                    Write-Host "❌ 網站 ID $siteId 同步異常: $($_.Exception.Message)" -ForegroundColor Red;
+                    "異常: 網站 ID $siteId - $($_.Exception.Message) - $(Get-Date)" | Out-File -FilePath $logFile -Append -Encoding UTF8;
+                }
+
+                Start-Sleep -Seconds 2;  # 防止 API 限制
+            }
+        }
+
+        "批次同步完成: $(Get-Date)" | Out-File -FilePath $logFile -Append -Encoding UTF8;
+        Write-Host "📋 完整日誌已保存到: $logFile" -ForegroundColor Blue;
+        Write-Host "✅ Windows 批次同步完成！" -ForegroundColor Green;
+    ` } else { `
+        echo "🚀 批次同步開始: [{{site_list}}] ({{days}} 天)"
+        log_file="data/logs/batch_sync_$(date +%Y%m%d_%H%M%S).log"
+        mkdir -p "$(dirname "$log_file")"
+
+        echo "📝 同步日誌將保存到: $log_file"
+        echo "批次同步開始: $(date)" > "$log_file"
+
+        for site in {{site_list}}; do
+            if [ ! -z "$site" ]; then
+                echo "🔄 開始同步網站 ID: $site"
+                echo "開始同步網站 ID: $site - $(date)" >> "$log_file"
+
+                if poetry run gsc-cli sync daily --site-id "$site" --days {{days}} --max-workers 1; then
+                    echo "✅ 網站 ID $site 同步成功"
+                    echo "成功: 網站 ID $site - $(date)" >> "$log_file"
+                else
+                    echo "❌ 網站 ID $site 同步失敗 (退出碼: $?)"
+                    echo "失敗: 網站 ID $site (退出碼: $?) - $(date)" >> "$log_file"
+                fi
+
+                sleep 2  # 防止 API 限制
+            fi
+        done
+
+        echo "批次同步完成: $(date)" >> "$log_file"
+        echo "📋 完整日誌已保存到: $log_file"
+        echo "✅ 批次同步完成！"
+    ` } }}
 
 ## 智能同步命令，自動處理 SSL 錯誤
 smart-sync site_id="all" days="7":

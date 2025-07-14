@@ -153,6 +153,7 @@ class Database:
             self._connection.commit()
             logger.info("Database initialized successfully")
             self.init_task_table()
+            self.init_api_usage_table()
 
     def add_site(self, domain: str, name: str, category: Optional[str] = None) -> Optional[int]:
         """添加站點。線程安全。"""

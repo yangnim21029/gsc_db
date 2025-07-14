@@ -173,6 +173,187 @@ def sync_hourly(
         raise typer.Exit(code=1)
 
 
+@sync_app.command("status")
+def sync_status(
+    ctx: typer.Context,
+    site_id: int = typer.Option(None, help="查看特定網站的同步狀態"),
+    show_recent: int = typer.Option(10, help="顯示最近的同步記錄數量"),
+):
+    """
+    查看同步狀態和進度監控。
+
+    顯示正在運行的同步進程、最近的同步記錄以及各網站的同步狀態概覽。
+    """
+    import subprocess
+    import sys
+    from datetime import datetime
+
+    console.print("🔍 [bold blue]正在檢查同步狀態...[/bold blue]\n")
+
+    # 1. 檢查正在運行的同步進程
+    try:
+        if sys.platform == "win32":
+            # Windows PowerShell 命令
+            result = subprocess.run(
+                [
+                    "powershell",
+                    "-Command",
+                    "Get-Process | Where-Object {$_.ProcessName -match 'python|gsc-cli|poetry'} | Where-Object {$_.CommandLine -match 'sync'} | Format-Table -AutoSize",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        else:
+            # Unix/Linux/macOS 命令
+            result = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=10)
+
+        if result.returncode == 0:
+            if sys.platform == "win32":
+                processes = result.stdout.strip()
+            else:
+                processes = [
+                    line
+                    for line in result.stdout.split("\n")
+                    if any(keyword in line for keyword in ["gsc-cli", "sync", "poetry"])
+                    and "sync status" not in line
+                    and "grep" not in line
+                ]
+
+            if (sys.platform == "win32" and processes) or (sys.platform != "win32" and processes):
+                console.print("🔄 [bold yellow]正在運行的同步進程:[/bold yellow]")
+                if sys.platform == "win32":
+                    console.print(processes)
+                else:
+                    for proc in processes[:5]:  # 限制顯示前5個
+                        console.print(f"  {proc}")
+                console.print()
+            else:
+                console.print("✅ [bold green]目前沒有正在運行的同步進程[/bold green]\n")
+        else:
+            console.print("⚠️ [yellow]無法檢查運行中的進程[/yellow]\n")
+    except Exception as e:
+        console.print(f"⚠️ [yellow]進程檢查失敗: {str(e)}[/yellow]\n")
+
+    # 2. 獲取資料庫連接並查詢同步狀態
+    try:
+        database_service = ctx.obj.database_service()
+
+        # 獲取最近的同步記錄
+        query = """
+        SELECT
+            s.name as site_name,
+            s.domain as site_domain,
+            MAX(pd.date) as last_sync_date,
+            COUNT(pd.id) as total_records,
+            COUNT(CASE WHEN pd.date >= date('now', '-7 days') THEN 1 END) as recent_records
+        FROM sites s
+        LEFT JOIN performance_data pd ON s.domain = pd.site_url
+        WHERE s.id = ? OR ? IS NULL
+        GROUP BY s.id, s.name, s.domain
+        ORDER BY last_sync_date DESC
+        """
+
+        results = database_service.fetch_all(query, (site_id, site_id))
+
+        if results:
+            # 創建狀態表格
+            table = Table(title="網站同步狀態概覽", show_header=True, header_style="bold magenta")
+            table.add_column("網站名稱", style="cyan")
+            table.add_column("域名", style="green")
+            table.add_column("最後同步", style="yellow")
+            table.add_column("總記錄數", justify="right", style="blue")
+            table.add_column("近7天記錄", justify="right", style="magenta")
+            table.add_column("狀態", justify="center")
+
+            for row in results:
+                last_sync = row[2] if row[2] else "從未同步"
+                total_records = row[3] if row[3] else 0
+                recent_records = row[4] if row[4] else 0
+
+                # 判斷同步狀態
+                if not row[2]:
+                    status = "[red]未同步[/red]"
+                else:
+                    last_date = datetime.strptime(row[2], "%Y-%m-%d")
+                    days_ago = (datetime.now() - last_date).days
+                    if days_ago <= 1:
+                        status = "[green]最新[/green]"
+                    elif days_ago <= 3:
+                        status = "[yellow]較新[/yellow]"
+                    else:
+                        status = "[red]過舊[/red]"
+
+                table.add_row(
+                    row[0] or "未命名",
+                    row[1] or "N/A",
+                    last_sync,
+                    str(total_records),
+                    str(recent_records),
+                    status,
+                )
+
+            console.print(table)
+        else:
+            console.print("⚠️ [yellow]未找到網站記錄[/yellow]")
+
+        # 3. 顯示最近的詳細同步活動（如果要求顯示）
+        if show_recent > 0:
+            console.print(f"\n📊 [bold blue]最近 {show_recent} 條同步記錄:[/bold blue]")
+
+            recent_query = """
+            SELECT
+                s.name as site_name,
+                pd.date,
+                COUNT(*) as records_count,
+                AVG(pd.clicks) as avg_clicks,
+                AVG(pd.impressions) as avg_impressions
+            FROM performance_data pd
+            JOIN sites s ON pd.site_url = s.domain
+            WHERE pd.date >= date('now', '-30 days')
+            AND (s.id = ? OR ? IS NULL)
+            GROUP BY s.name, pd.date
+            ORDER BY pd.date DESC
+            LIMIT ?
+            """
+
+            recent_results = database_service.fetch_all(
+                recent_query, (site_id, site_id, show_recent)
+            )
+
+            if recent_results:
+                recent_table = Table(show_header=True, header_style="bold cyan")
+                recent_table.add_column("網站", style="cyan")
+                recent_table.add_column("日期", style="yellow")
+                recent_table.add_column("記錄數", justify="right", style="blue")
+                recent_table.add_column("平均點擊", justify="right", style="green")
+                recent_table.add_column("平均曝光", justify="right", style="magenta")
+
+                for row in recent_results:
+                    recent_table.add_row(
+                        row[0] or "未命名",
+                        row[1],
+                        str(row[2]),
+                        f"{row[3]:.1f}" if row[3] else "0",
+                        f"{row[4]:.1f}" if row[4] else "0",
+                    )
+
+                console.print(recent_table)
+            else:
+                console.print("沒有找到最近的同步記錄")
+
+    except Exception as e:
+        console.print(f"❌ [red]查詢資料庫時發生錯誤: {str(e)}[/red]")
+
+    # 4. 提供實用的下一步建議
+    console.print("\n💡 [bold green]實用命令:[/bold green]")
+    console.print("  just sync-site <site_id> [days]     # 同步特定網站")
+    console.print('  just sync-multiple "1 2 3"          # 批次同步多個網站')
+    console.print("  just smart-sync                     # 智能同步所有網站")
+    console.print("  just check-processes                # 檢查運行中的進程")
+    console.print("  just kill-processes                 # 停止所有同步進程")
+
+
 @analyze_app.command("report")
 def analyze_report(
     ctx: typer.Context,

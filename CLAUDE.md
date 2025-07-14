@@ -10,12 +10,15 @@ GSC Database Manager is an enterprise-level Google Search Console data managemen
 
 ### Setup and Installation
 ```bash
+# Initialize project structure (creates directories, checks environment)
+just init
+
 # Install dependencies
 just setup
 # or
 poetry install
 
-# Bootstrap project (install + auth)
+# Bootstrap project (init + install + auth)
 just bootstrap
 
 # Google API authentication
@@ -46,7 +49,12 @@ just sync-site <site_id> [days]
 just sync-site 1 7
 
 # Batch sync multiple sites
-just sync-multiple "1 3 5"
+just sync-multiple "1 3 5" [days]       # Enhanced with progress tracking & error handling
+just batch-sync "1 3 5" [days]          # Windows-optimized with detailed logging
+
+# Monitor sync progress and status
+just sync-status                         # View all sites sync status
+just sync-status [site_id]              # View specific site status
 
 # Smart sync with network diagnostics
 just smart-sync [site_id] [days]
@@ -56,6 +64,34 @@ just turbo-sync [site_id] [days]         # high-performance mode
 
 # Full maintenance (sync all, backup, cleanup)
 just maintenance
+```
+
+### Windows Compatibility Improvements
+
+The project now includes enhanced Windows support:
+
+- **Cross-platform sync commands**: All sync commands now work seamlessly on both Windows and Unix systems
+- **Windows-optimized batch sync**: `just batch-sync` provides enhanced error handling and detailed logging for Windows environments
+- **Progress monitoring**: Real-time progress tracking with success/failure counts and timing information
+- **Proper process management**: Windows-compatible process checking and management
+- **Error recovery guidance**: Intelligent suggestions for handling sync failures based on the specific error context
+
+### Sync Status and Monitoring
+
+Instead of using inappropriate commands like `sync daily --day1 --all-sites` to check progress, use:
+
+```bash
+# Check current sync status
+just sync-status
+
+# Monitor specific site
+just sync-status 5
+
+# Check running processes
+just check-processes
+
+# View recent sync activity
+poetry run gsc-cli sync status --show-recent 20
 ```
 
 ### Site Management

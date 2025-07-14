@@ -120,11 +120,26 @@ pipx install poetry
 
 3.  **設定 Google API 認證**
 
-    您需要在 Google Cloud Console 中建立專案並下載 OAuth2 憑證文件：
+    ### 步驟 3.1：在 Google Cloud Console 設置專案
+
+    1. 前往 [Google Cloud Console](https://console.cloud.google.com/)
+    2. 建立新專案或選擇現有專案
+    3. 啟用 **Google Search Console API**：
+       - 前往「APIs & Services」→「Library」
+       - 搜尋「Google Search Console API」
+       - 點擊「啟用」
+    4. 建立 OAuth 2.0 憑證：
+       - 前往「APIs & Services」→「Credentials」
+       - 點擊「+ CREATE CREDENTIALS」→「OAuth client ID」
+       - 選擇「Desktop application」
+       - 填入應用程式名稱（例如：GSC Database Manager）
+       - 下載 JSON 文件
+
+    ### 步驟 3.2：設置本地憑證
 
     ```bash
-    # 將您的 client_secret.json 放在 cred/ 目錄下
-    cp path/to/your/client_secret.json cred/
+    # 將下載的憑證文件重新命名並放入 cred/ 目錄
+    cp ~/Downloads/client_secret_xxxxx.json cred/client_secret.json
 
     # 執行認證流程
     just auth

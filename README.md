@@ -257,17 +257,6 @@ cargo install just
     just auth
     ```
 
-    **⚠️ 重要提醒：OAuth 認證流程說明**
-
-    當您執行 `just auth` 時，系統會：
-
-    1. 提供一個 Google 授權 URL，請在瀏覽器中打開
-    2. 完成授權後，Google 會重定向到 `http://localhost:8000/auth/callback`
-    3. **這個頁面會顯示「無法連上這個網站」- 這是正常的！**
-    4. 請從瀏覽器地址欄複製 `code=` 後面的完整授權碼
-    5. 將授權碼貼回終端機以完成認證
-
-    這是一個**手動複製授權碼**的認證流程，不需要啟動本地服務器。
 
 ### 🔧 常見設定問題與解決方案
 
@@ -611,10 +600,10 @@ poetry run python -m src.analysis.hourly_performance_analyzer
    ```powershell
    git clone <repository-url>
    cd gsc_db
-   
+
    # 使用 Windows 批次檔案進行設置（如果 Just 安裝有問題）
    .\setup.bat
-   
+
    # 或使用 Python 設置腳本
    python setup.py
    ```
@@ -629,10 +618,10 @@ poetry run python -m src.analysis.hourly_performance_analyzer
    ```powershell
    # 添加第一個站點
    poetry run gsc-cli site add "sc-domain:your-site.com"
-   
+
    # 查看同步狀態
    poetry run gsc-cli sync status
-   
+
    # Windows 優化的批次同步
    poetry run python -m src.app sync daily --site-id 1 --days 7 --max-workers 1
    ```

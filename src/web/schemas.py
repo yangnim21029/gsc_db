@@ -37,29 +37,31 @@ class RankingDataRequest(BaseModel):
     Request model for ranking data query.
     """
 
-    site_id: int = Field(description="Site ID to query", example=4)
-    start_date: str = Field(..., description="Start date (YYYY-MM-DD)", example="2025-07-01")
-    end_date: str = Field(..., description="End date (YYYY-MM-DD)", example="2025-07-01")
+    site_id: int = Field(..., description="Site ID to query", examples=[4])
+    start_date: str = Field(..., description="Start date (YYYY-MM-DD)", examples=["2025-07-01"])
+    end_date: str = Field(..., description="End date (YYYY-MM-DD)", examples=["2025-07-01"])
     queries: Optional[List[str]] = Field(
-        None,
+        default=None,
         description="Specific queries/keywords to filter (support spaces)",
-        example=["阪急百貨香港", "日本阪急百貨 香港"],
+        examples=[["阪急百貨香港", "日本阪急百貨 香港"]],
     )
     pages: Optional[List[str]] = Field(
-        None,
+        default=None,
         description="Specific pages/URLs to filter",
-        example=[
-            "https://hkg.hankyu-hanshin-dept.co.jp/",
-            "https://hkg.hankyu-hanshin-dept.co.jp/about",
+        examples=[
+            [
+                "https://hkg.hankyu-hanshin-dept.co.jp/",
+                "https://hkg.hankyu-hanshin-dept.co.jp/about",
+            ]
         ],
     )
     group_by: str = Field(
-        "query", description="Group results by 'query' or 'page'", example="query"
+        default="query", description="Group results by 'query' or 'page'", examples=["query"]
     )
     max_results: Optional[int] = Field(
-        1000,
+        default=1000,
         description="Maximum number of results to return (default: 1000, max: 10000)",
-        example=10,
+        examples=[10],
     )
 
 

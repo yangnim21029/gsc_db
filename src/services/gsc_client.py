@@ -242,6 +242,8 @@ class GSCClient:
                     while True:
                         request_body["startRow"] = start_row
 
+                        if self.service is None:
+                            raise Exception("GSC service is None")
                         response = (
                             self.service.searchanalytics()
                             .query(siteUrl=site_url, body=request_body)

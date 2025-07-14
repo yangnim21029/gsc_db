@@ -163,8 +163,9 @@ class DataAggregationService:
         FROM gsc_performance_data
         WHERE site_id = ? AND date = ?
         """
-        result = self.database.fetch_all(query, (site_id, target_date))
-        return result[0]["count"] if result else 0
+        with self.database._lock:
+            result = self.database._connection.execute(query, (site_id, target_date)).fetchone()
+        return result[0] if result else 0
 
     def _get_hourly_data_for_date(self, site_id: int, target_date: str) -> List[Dict]:
         """Retrieve hourly data for a specific site and date."""
@@ -185,7 +186,9 @@ class DataAggregationService:
         WHERE site_id = ? AND date = ?
         ORDER BY query, page, hour
         """
-        return self.database.fetch_all(query, (site_id, target_date))
+        with self.database._lock:
+            rows = self.database._connection.execute(query, (site_id, target_date)).fetchall()
+        return [dict(row) for row in rows]
 
     def _aggregate_data(self, hourly_data: List[Dict], target_date: str) -> List[Dict]:
         """
@@ -279,7 +282,9 @@ class DataAggregationService:
         DELETE FROM gsc_performance_data
         WHERE site_id = ? AND date = ?
         """
-        self.database.execute(query, (site_id, target_date))
+        with self.database._lock:
+            self.database._connection.execute(query, (site_id, target_date))
+            self.database._connection.commit()
         self.logger.info(f"Deleted existing daily data for site {site_id}, date {target_date}")
 
     def _insert_daily_summaries(self, site_id: int, daily_summaries: List[Dict]) -> int:
@@ -309,7 +314,9 @@ class DataAggregationService:
             for summary in daily_summaries
         ]
 
-        self.database.execute_batch(query, insert_data)
+        with self.database._lock:
+            self.database._connection.executemany(query, insert_data)
+            self.database._connection.commit()
         self.logger.info(f"Inserted {len(daily_summaries)} daily summary records")
 
         return len(daily_summaries)

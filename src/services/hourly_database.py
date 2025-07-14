@@ -31,7 +31,7 @@ class HourlyDatabase:
         site_url: str,
         start_date: str,
         end_date: str,
-        mode: SyncMode = SyncMode.SKIP,
+        sync_mode: SyncMode = SyncMode.SKIP,
     ) -> Dict[str, int]:
         """
         同步指定站點和時間範圍內的每小時數據。
@@ -40,7 +40,7 @@ class HourlyDatabase:
         total_inserted_count = 0
         logger.info(
             f"開始為站點 {site_url} 同步 {start_date} 到 {end_date} 的每小時數據，"
-            f"模式: {mode.value}。"
+            f"模式: {sync_mode.value}。"
         )
 
         try:
@@ -63,13 +63,13 @@ class HourlyDatabase:
 
             dates_to_sync = sorted(list(all_possible_dates))
 
-            if mode == SyncMode.SKIP:
+            if sync_mode == SyncMode.SKIP:
                 existing_dates = self.db.get_existing_hourly_dates(site_id, start_date, end_date)
                 dates_to_sync = sorted(list(all_possible_dates - existing_dates))
 
             logger.info(
                 f"計劃同步 {len(all_possible_dates)} 天 ({start_date} 到 {end_date}). "
-                f"模式: {mode.value}. "
+                f"模式: {sync_mode.value}. "
                 f"將要同步 {len(dates_to_sync)} 天."
             )
 
@@ -80,7 +80,7 @@ class HourlyDatabase:
             # ================= 執行 (Execution) 階段 =================
             for date_str in dates_to_sync:
                 try:
-                    if mode == SyncMode.OVERWRITE:
+                    if sync_mode == SyncMode.OVERWRITE:
                         logger.info(
                             f"覆蓋模式: 正在刪除站點 {site_url} 日期 {date_str} 的舊數據..."
                         )

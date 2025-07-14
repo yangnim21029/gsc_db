@@ -83,6 +83,10 @@ def _is_retryable_error(exception: Exception) -> bool:
     if "length mismatch" in str(exception) or "SSL" in str(exception):
         return True
 
+    # Connection cleanup errors (Google API client)
+    if "'NoneType' object has no attribute 'close'" in str(exception):
+        return True
+
     return False
 
 
@@ -154,7 +158,11 @@ def _sync_single_day(
             logger.error(f"不可重試的 HTTP 錯誤 {e.resp.status}: {e}")
             raise
     except Exception as e:
-        if _is_retryable_error(e):
+        # Handle specific NoneType close() errors
+        if "'NoneType' object has no attribute 'close'" in str(e):
+            logger.warning(f"Connection cleanup error (will retry): {e}")
+            raise  # This is retryable
+        elif _is_retryable_error(e):
             logger.warning(f"可重試的錯誤: {e}")
             raise
         else:

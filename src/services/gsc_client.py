@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-
 
 import concurrent.futures
+import json
 import logging
 import os
 import ssl
 
 # 導入相關模塊
 import sys
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -22,7 +24,6 @@ from .hourly_data import HourlyDataHandler
 
 sys.path.append(os.path.dirname(__file__))
 import threading
-import time
 import xml.etree.ElementTree as ET
 
 import requests
@@ -86,7 +87,25 @@ class GSCClient:
                     )
             except Exception as e:
                 logger.warning(f"加載 {self.credentials_path} 失敗: {e}，將嘗試重新認證。")
-                creds = None
+                # Try to fix common JSON formatting issues
+                try:
+                    with open(self.credentials_path, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                        # Remove any null bytes or non-printable characters
+                        content = "".join(
+                            char for char in content if ord(char) >= 32 or char in "\n\r\t"
+                        )
+                        if content and not content.startswith("{"):
+                            # Find the start of JSON
+                            start = content.find("{")
+                            if start > 0:
+                                content = content[start:]
+                        creds_data = json.loads(content)
+                        creds = Credentials.from_authorized_user_info(creds_data, self.scopes)
+                        logger.info("Successfully recovered credentials from malformed JSON")
+                except Exception as recovery_error:
+                    logger.warning(f"Failed to recover credentials: {recovery_error}")
+                    creds = None
 
         # 2. 如果憑證無效或需要刷新，則處理
         if not creds or not creds.valid:
@@ -133,10 +152,33 @@ class GSCClient:
         # 5. 最終設置 class 屬性
         if creds and isinstance(creds, Credentials):
             self.credentials = creds
-            self.service = build("searchconsole", "v1", credentials=self.credentials)
-            self.hourly_handler = HourlyDataHandler(self.service, self.database)
+            try:
+                self.service = build("searchconsole", "v1", credentials=self.credentials)
+                if self.service is None:
+                    raise Exception("Google API service build returned None")
+                self.hourly_handler = HourlyDataHandler(self.service, self.database)
+            except Exception as e:
+                logger.error(f"Failed to build Google API service: {e}")
+                self.service = None
+                raise ConnectionRefusedError(f"無法初始化 Google API 服務: {e}")
         else:
             raise ConnectionRefusedError("無法獲取有效的 Google 認證憑證。")
+
+    def is_authenticated(self) -> bool:
+        """檢查是否已認證並且服務可用"""
+        return self.credentials is not None and self.credentials.valid and self.service is not None
+
+    def close_connection(self):
+        """清理連接資源"""
+        try:
+            if hasattr(self, "service") and self.service is not None:
+                # Google API client doesn't have explicit close method
+                # but we can clear the reference
+                self.service = None
+            if hasattr(self, "hourly_handler") and self.hourly_handler is not None:
+                self.hourly_handler = None
+        except Exception as e:
+            logger.warning(f"Error during connection cleanup: {e}")
 
     def _rate_limit_check(self):
         """實施 API 速率限制檢查"""
@@ -165,10 +207,10 @@ class GSCClient:
         - 使用 fields 參數
         - 遵循每日查詢模式
         """
-        if not self.service:
+        if not self.is_authenticated():
             self.authenticate()
-        if not self.service:
-            raise Exception("GSC service not initialized")
+        if not self.is_authenticated():
+            raise Exception("GSC service not initialized or authentication failed")
 
         search_types = ["web", "image", "video", "news", "discover", "googleNews"]
 

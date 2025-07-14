@@ -48,8 +48,8 @@ venv/
 
 # Sensitive Configuration
 # IMPORTANT: Never commit your API credentials or tokens!
-cred/client_secret.json
 cred/sync_state.json
+cred/credentials.json
 token.json
 credentials.json # Also ignore if in root
 

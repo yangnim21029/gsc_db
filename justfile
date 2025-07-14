@@ -64,8 +64,21 @@ site-add site_url:
 
 ## 為特定網站在指定天數內同步資料。 用法: `just sync-site <site_id> [days]`
 sync-site site_id days='7':
-    @echo "🔄 正在為網站 ID '{{site_id}}' 同步過去 '{{days}}' 天的資料..."
-    @script -q /dev/null poetry run gsc-cli sync daily --site-id {{site_id}} --days {{days}} --max-workers 2
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "🔄 正在為網站 ID '{{site_id}}' 同步過去 '{{days}}' 天的資料..."
+
+    # 1. 同步日級數據
+    echo "📊 第1步：同步日級數據..."
+    script -q /dev/null poetry run gsc-cli sync daily --site-id {{site_id}} --days {{days}} --max-workers 2
+
+    # 2. 同步小時級數據（最近幾天）
+    HOURLY_DAYS=$([ "{{days}}" -gt "3" ] && echo "3" || echo "{{days}}")
+    echo "⏰ 第2步：同步小時級數據（過去 $HOURLY_DAYS 天）..."
+    script -q /dev/null poetry run gsc-cli sync hourly {{site_id}} --days $HOURLY_DAYS || echo "⚠️ 小時級數據同步失敗，已跳過"
+
+    echo "✅ 網站 ID '{{site_id}}' 的完整數據同步完成！"
 
 ## 迴圈同步多個網站。 用法: `just sync-multiple "1 3 5"`
 sync-multiple site_list:
@@ -73,8 +86,7 @@ sync-multiple site_list:
     echo "🚀 開始批次同步網站: [{{site_list}}]"
     for site in {{site_list}}; do
         echo "---"
-        echo "🔄 正在為網站 ID '$site' 同步過去 '7' 天的資料..."
-        script -q /dev/null poetry run gsc-cli sync daily --site-id $site --days 7 --max-workers 2
+        just sync-site $site 7
     done
     echo "✅ 所有指定網站的批次同步已完成。"
 

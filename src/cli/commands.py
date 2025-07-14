@@ -104,6 +104,75 @@ def sync_daily(
     )
 
 
+@sync_app.command("hourly")
+def sync_hourly(
+    ctx: typer.Context,
+    site_id: int = typer.Argument(..., help="要同步小時數據的網站 ID。"),
+    days: int = typer.Option(1, help="要回溯同步的天數（默認：1）。"),
+    force_overwrite: bool = typer.Option(False, "--force", help="強制覆蓋已存在的小時數據。"),
+):
+    """
+    執行小時級數據同步。
+
+    這個命令會同步指定網站的小時級性能數據，提供更精細的數據分析。
+    注意：小時數據通常只有最近幾天的數據可用。
+    """
+    console.print(f"🔄 開始同步網站 ID {site_id} 的小時級數據（過去 {days} 天）...")
+
+    # 從容器中獲取服務
+    hourly_service = ctx.obj.hourly_data_service()
+    site_service = ctx.obj.site_service()
+
+    # 驗證網站是否存在
+    sites = site_service.get_all_sites()
+    site_exists = any(site["id"] == site_id for site in sites)
+    if not site_exists:
+        console.print(f"❌ 錯誤：找不到 ID 為 {site_id} 的網站。")
+        console.print("💡 使用 'gsc-cli site list' 查看可用的網站。")
+        raise typer.Exit(code=1)
+
+    # 獲取網站信息
+    site_info = next(site for site in sites if site["id"] == site_id)
+    site_url = site_info["domain"]
+
+    console.print(f"📊 同步網站：{site_info['name']} ({site_url})")
+
+    try:
+        # 計算日期範圍
+        from datetime import datetime, timedelta
+
+        end_date = datetime.now() - timedelta(days=1)  # 昨天
+        start_date = end_date - timedelta(days=days - 1)
+
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
+
+        console.print(f"📅 日期範圍：{start_date_str} 到 {end_date_str}")
+
+        # 執行小時數據同步
+        from src.services.database import SyncMode
+
+        sync_mode = SyncMode.OVERWRITE if force_overwrite else SyncMode.SKIP
+
+        result = hourly_service.sync_hourly_data(
+            site_url=site_url, start_date=start_date_str, end_date=end_date_str, sync_mode=sync_mode
+        )
+
+        if result and result.get("inserted", 0) > 0:
+            console.print("✅ 小時級數據同步完成！")
+            console.print(f"📈 同步的記錄數：{result.get('inserted', 0)}")
+        else:
+            console.print("⚠️ 小時級數據同步完成，但沒有新數據。")
+
+    except Exception as e:
+        console.print(f"❌ 小時級數據同步失敗：{str(e)}")
+        console.print("💡 建議：")
+        console.print("  1. 檢查網絡連接：just network-check")
+        console.print("  2. 驗證 Google API 認證：just auth")
+        console.print("  3. 嘗試更小的日期範圍（--days 1）")
+        raise typer.Exit(code=1)
+
+
 @analyze_app.command("report")
 def analyze_report(
     ctx: typer.Context,

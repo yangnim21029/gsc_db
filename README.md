@@ -52,6 +52,31 @@
 </tr>
 </table>
 
+## 🆕 最新更新亮點
+
+### ✅ Windows 完全兼容支援
+
+- **解決 Windows 多站點同步問題**: 修復了 bash 命令錯誤，現在 Windows 用戶可以正常進行批次同步
+- **Windows 優化命令**: 新增 `batch-sync` 命令，專為 Windows 環境優化，包含詳細日誌記錄
+- **跨平台進程管理**: 智能檢測作業系統，在 Windows 使用 PowerShell，Unix 系統使用 bash
+
+### 📊 進度監控與狀態追蹤
+
+- **實時同步狀態**: `just sync-status` 命令顯示所有站點的同步狀態和進度
+- **進度指示器**: 批次同步時顯示 "站點 X / Y" 進度，包含耗時統計
+- **智能錯誤恢復**: 失敗時提供具體的故障排除建議和下一步行動
+
+### 🛡️ 增強的網路穩定性
+
+- **多種同步模式**: `smart-sync`、`conservative-sync`、`adaptive-sync`、`turbo-sync`
+- **自動 SSL 錯誤處理**: 智能檢測網路問題並自動調整同步策略
+- **網路診斷工具**: `network-check` 命令協助診斷連接問題
+
+### 📝 詳細日誌與追蹤
+
+- **Windows 批次同步日誌**: 自動保存到 `data/logs/` 目錄，包含時間戳和詳細狀態
+- **成功/失敗統計**: 批次操作完成後顯示詳細的成功率和失敗站點列表
+
 ## ✨ 核心功能
 
 **📚 永久保存您的數據**
@@ -104,10 +129,12 @@ pipx install poetry
 #### Windows 系統安裝指南
 
 **Step 1: 安裝 Python 3.11+**
+
 - 前往 [Python 官網](https://www.python.org/downloads/) 下載 Python 3.11 或更新版本
 - 安裝時請勾選「Add Python to PATH」
 
 **Step 2: 安裝 Poetry**
+
 ```powershell
 # 使用 PowerShell 安裝 Poetry
 (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
@@ -141,6 +168,7 @@ cargo install just
 ```
 
 **Step 4: 驗證安裝**
+
 ```powershell
 # 檢查所有工具是否正確安裝
 python --version    # 應顯示 Python 3.11+
@@ -246,6 +274,7 @@ cargo install just
 #### Windows 系統特別注意事項
 
 1. **PowerShell 執行政策問題**
+
    ```powershell
    # 如果遇到執行政策錯誤，執行以下命令
    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
@@ -257,29 +286,84 @@ cargo install just
    cp "C:\Users\YourName\Downloads\client_secret_xxxxx.json" "cred\client_secret.json"
    ```
 
+#### 🆕 Windows 同步問題解決方案
+
+**❌ 錯誤：多站點同步 bash 命令失敗**
+
+- **原因**：Windows 不支援 bash 腳本
+- **解決方案**：使用新的 Windows 優化命令
+
+  ```powershell
+  # 使用 Windows 優化的批次同步
+  just batch-sync "1 3 5" 7
+
+  # 或使用 PowerShell 相容的進階同步
+  just smart-sync 5 7
+  ```
+
+**❌ 錯誤：無法查看同步進度**
+
+- **原因**：缺少進度監控命令
+- **解決方案**：使用新的狀態監控功能
+
+  ```powershell
+  # 查看實時同步狀態
+  just sync-status
+
+  # 監控特定站點進度
+  just sync-status 5
+
+  # 檢查運行中的進程
+  just check-processes
+  ```
+
+**⚠️ 注意：避免使用不當指令**
+
+- ❌ **錯誤做法**：`just sync daily --day1 --all-sites` (這不是狀態查詢命令)
+- ✅ **正確做法**：`just sync-status` (專門的狀態監控命令)
+
 #### 常見錯誤與解決方法
 
 **❌ 錯誤：「API 未啟用」**
+
 - **解決方案**：確認已在 Google Cloud Console 啟用 Google Search Console API
 - 檢查步驟：前往 APIs & Services → Dashboard，確認 API 顯示在已啟用列表中
 
 **❌ 錯誤：「憑證檔案不存在」**
+
 - **解決方案**：確認 `client_secret.json` 位於 `cred/` 目錄下
 - 檢查命令：`ls cred/` (macOS/Linux) 或 `dir cred` (Windows)
 
 **❌ 錯誤：「OAuth 同意畫面未設定」**
+
 - **解決方案**：完成 OAuth consent screen 設定 (見上方步驟 4)
 - 確認您的 Gmail 帳號已添加為測試使用者
 
 **❌ 錯誤：「權限被拒絕」**
+
 - **解決方案**：確認您的 Google 帳號有權存取要同步的網站
 - 在 Google Search Console 中確認該網站的擁有者或使用者權限
 
 **❌ Just 命令不存在 (Windows)**
+
 - **解決方案**：
   1. 重新安裝 Just (參考上方 Windows 安裝指南)
   2. 使用 Windows 批次檔案：雙擊 `setup.bat` 進行初始化
   3. 或使用替代命令：`poetry run python -m src.app [參數]`
+
+**❌ SSL/網路連接問題**
+
+- **解決方案**：使用智能同步模式自動處理
+
+  ```bash
+  # 檢查網路狀態
+  just network-check
+
+  # 根據網路狀況選擇合適的同步模式
+  just conservative-sync 5 7    # 網路不穩定時使用
+  just smart-sync 5 7          # 一般推薦使用
+  just turbo-sync 5 7          # 網路穩定時使用
+  ```
 
 #### 驗證設定是否正確
 
@@ -292,7 +376,10 @@ just init
 # 2. 驗證認證
 just site-list
 
-# 3. 如果一切正常，應該會看到您 GSC 帳號中的網站列表
+# 3. 測試同步功能
+just sync-status
+
+# 4. 如果一切正常，應該會看到您 GSC 帳號中的網站列表
 ```
 
 ## 🎯 基本用法
@@ -318,6 +405,8 @@ just site-add "sc-domain:your-site.com"
 
 ### 3. 數據同步
 
+#### 基本同步操作
+
 ```bash
 # 同步站點 ID 為 1 的最近 7 天數據
 just sync-site 1 7
@@ -325,11 +414,51 @@ just sync-site 1 7
 # 同步站點 ID 為 1 的最近 14 天數據
 just sync-site 1 14
 
-# 批次同步多個站點（站點 ID: 1, 3, 5）
-just sync-multiple "1 3 5"
-
 # 執行完整的每日維護程序（同步所有站點、備份資料庫、清理舊備份）
 just maintenance
+```
+
+#### 🆕 增強批次同步 (支援 Windows)
+
+```bash
+# 批次同步多個站點，包含進度追蹤和錯誤處理
+just sync-multiple "1 3 5" 7
+
+# Windows 優化的批次同步，包含詳細日誌記錄
+just batch-sync "1 3 5" 14
+
+# 查看同步狀態和進度監控
+just sync-status              # 查看所有站點狀態
+just sync-status 5            # 查看特定站點狀態
+```
+
+#### 🛡️ 智能同步模式 (自動處理網路問題)
+
+```bash
+# 智能同步 - 自動處理 SSL 錯誤
+just smart-sync 5 7
+
+# 保守同步 - 單線程模式，適用於網路不穩定環境
+just conservative-sync 5 7
+
+# 自適應同步 - 根據網路狀況自動調整併發數
+just adaptive-sync 5 7
+
+# 高性能同步 - 適用於穩定網路環境
+just turbo-sync 5 7
+```
+
+#### 🔧 進程管理和故障排除
+
+```bash
+# 檢查正在運行的同步進程
+just check-processes
+
+# 停止所有 GSC 相關進程
+just kill-processes
+
+# 檢查網路連接狀態
+just network-check
 ```
 
 ### 4. 開發與測試
@@ -462,6 +591,65 @@ poetry run python -m src.analysis.hourly_performance_analyzer
 - [ ] **支援更多數據源**: 整合其他數據來源，如 Google Analytics, Ahrefs 或 Semrush
 - [ ] **Web 儀表板**: 建立一個簡單的網頁介面，用以視覺化數據並與 AI Agent 互動
 - [ ] **插件系統**: 允許使用者輕鬆地加入自訂的數據擷取器或分析模組
+
+## 🚀 Windows 用戶快速開始指南
+
+如果您是 Windows 用戶且希望快速開始使用本工具，可以按照以下步驟：
+
+### 快速安裝 (Windows)
+
+1. **下載並安裝 Python 3.11+**
+   - 前往 [Python 官網](https://www.python.org/downloads/) 下載安裝
+   - ✅ 記得勾選「Add Python to PATH」
+
+2. **安裝 Poetry**
+   ```powershell
+   pip install poetry
+   ```
+
+3. **克隆專案並設置**
+   ```powershell
+   git clone <repository-url>
+   cd gsc_db
+   
+   # 使用 Windows 批次檔案進行設置（如果 Just 安裝有問題）
+   .\setup.bat
+   
+   # 或使用 Python 設置腳本
+   python setup.py
+   ```
+
+4. **安裝依賴並認證**
+   ```powershell
+   poetry install
+   poetry run gsc-cli auth login
+   ```
+
+5. **開始使用 Windows 優化命令**
+   ```powershell
+   # 添加第一個站點
+   poetry run gsc-cli site add "sc-domain:your-site.com"
+   
+   # 查看同步狀態
+   poetry run gsc-cli sync status
+   
+   # Windows 優化的批次同步
+   poetry run python -m src.app sync daily --site-id 1 --days 7 --max-workers 1
+   ```
+
+### Windows 專用故障排除
+
+如果遇到問題，請嘗試：
+
+```powershell
+# 檢查網路連接
+poetry run python -c "from src.utils.system_health_check import check_network_connectivity; print(check_network_connectivity())"
+
+# 查看詳細錯誤信息
+poetry run gsc-cli --help
+```
+
+**💡 提示**: Windows 用戶建議使用 `batch-sync` 命令而非 `sync-multiple`，因為前者針對 Windows 環境做了特別優化。
 
 ## 🤝 如何貢獻
 

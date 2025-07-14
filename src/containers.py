@@ -16,6 +16,7 @@ from .analysis.hourly_performance_analyzer import HourlyAnalyzer
 from .config import settings
 from .jobs.bulk_data_synchronizer import BulkDataSynchronizer
 from .services.analysis_service import AnalysisService
+from .services.data_aggregation_service import DataAggregationService
 from .services.database import Database
 from .services.gsc_client import GSCClient
 from .services.hourly_database import HourlyDatabase
@@ -86,4 +87,9 @@ class Container(containers.DeclarativeContainer):
     hourly_performance_analyzer = providers.Singleton(
         HourlyAnalyzer,
         db=database,
+    )
+
+    data_aggregation_service = providers.Singleton(
+        DataAggregationService,
+        database=database,
     )

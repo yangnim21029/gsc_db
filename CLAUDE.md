@@ -51,6 +51,12 @@ just sync-site 1 7
 # Batch sync multiple sites
 just sync-multiple "1 3 5" [days]       # Sequential sync with progress tracking
 
+# Hourly data synchronization (last few days only)
+poetry run gsc-cli sync hourly <site_id> --days <days>
+
+# Example: Sync hourly data for site ID 5, last 2 days
+poetry run gsc-cli sync hourly 5 --days 2
+
 # Monitor sync progress and status
 just sync-status                         # View all sites sync status
 just sync-status [site_id]              # View specific site status
@@ -68,6 +74,22 @@ The sync system uses sequential processing for reliability:
 - **Error handling**: Comprehensive error handling with intelligent recovery suggestions
 - **Cross-platform compatibility**: Works seamlessly on both Windows and Unix systems
 
+### Sync Modes
+
+The system supports two sync modes:
+
+- **skip** (default): Skip existing data, only insert new records
+- **overwrite**: Replace existing data with new data
+
+```bash
+# Use skip mode (default)
+poetry run gsc-cli sync daily --site-id 5 --days 7 --sync-mode skip
+
+# Use overwrite mode
+poetry run gsc-cli sync daily --site-id 5 --days 7 --sync-mode overwrite
+poetry run gsc-cli sync multiple "1 2 3" --days 7 --sync-mode overwrite
+```
+
 ### Sync Status and Monitoring
 
 Use these commands to monitor sync progress:
@@ -83,6 +105,32 @@ just sync-status 5
 poetry run gsc-cli sync status
 ```
 
+### Direct CLI Usage
+
+You can also use the CLI directly without the justfile:
+
+```bash
+# Site management
+poetry run gsc-cli site list
+poetry run gsc-cli site add "sc-domain:example.com"
+
+# Authentication
+poetry run gsc-cli auth login
+
+# Daily sync
+poetry run gsc-cli sync daily --site-id 5 --days 7
+poetry run gsc-cli sync daily --all-sites --days 3
+
+# Multiple site sync
+poetry run gsc-cli sync multiple "1 3 5" --days 14
+
+# Hourly sync
+poetry run gsc-cli sync hourly 5 --days 2 --force
+
+# Analysis
+poetry run gsc-cli analyze report 5 --days 30
+```
+
 ### Site Management
 ```bash
 # List all sites
@@ -90,6 +138,15 @@ just site-list
 
 # Add new site
 just site-add "sc-domain:example.com"
+```
+
+### Data Analysis
+```bash
+# Generate performance report for a site
+poetry run gsc-cli analyze report <site_id> --days <days>
+
+# Example: Generate 30-day report for site ID 5
+poetry run gsc-cli analyze report 5 --days 30
 ```
 
 ### API Development
@@ -187,9 +244,9 @@ Configuration sections:
 
 ## Threading and Concurrency
 
-The application uses careful concurrency management:
+The application uses sequential processing with careful resource management:
 - **SQLite connections**: `check_same_thread=False` with `threading.RLock`
-- **GSC API calls**: Configurable worker pools with SSL error handling
+- **GSC API calls**: Sequential processing with `max_workers=1` to ensure API stability
 - **Tenacity**: Exponential backoff for API retry logic
 
 ## Testing Strategy
@@ -214,7 +271,7 @@ The application includes sophisticated network error handling for common GSC API
 - Connection timeouts
 - Certificate validation errors
 
-Use `just network-check` to diagnose connectivity issues and choose appropriate sync commands based on network stability.
+The system automatically handles network connectivity issues with built-in retry logic and error recovery.
 
 ### Cursor Rules Integration
 This project includes Cursor-specific development rules:
@@ -225,4 +282,4 @@ This project includes Cursor-specific development rules:
 - Automatic daily backups to `data/backups/`
 - Compression of backup files
 - 30-day backup retention policy
-- `just clean-all` is destructive - use with extreme caution
+- Backup files are automatically managed with 30-day retention

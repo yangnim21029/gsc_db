@@ -5,7 +5,6 @@ GSC 數據同步作業
 - 包含進度條、重試、斷點續傳和多種同步模式。
 """
 
-import concurrent.futures
 import logging
 import ssl
 import traceback
@@ -269,14 +268,9 @@ def run_sync(
         return
 
     # ================= 3. 執行階段 =================
-    # 根據 GSC API 最佳實踐，減少併發數量
+    # 根據 GSC API 最佳實踐，使用順序處理避免並行問題
     # API 文件建議避免過度併發以防止 SSL 和速率限制問題
-    optimized_max_workers = min(max_workers, 2)  # 最多 2 個併發 worker
-
-    if optimized_max_workers != max_workers:
-        logger.info(
-            f"根據 GSC API 最佳實踐，將併發數量從 {max_workers} 調整為 {optimized_max_workers}"
-        )
+    logger.info("使用順序處理模式，確保 GSC API 調用的穩定性")
 
     total_stats = {
         "inserted": 0,
@@ -298,33 +292,27 @@ def run_sync(
     ]
 
     with Progress(*progress_columns, console=console) as progress:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=optimized_max_workers) as executor:
-            task_id = progress.add_task("[bold green]並行同步中...", total=len(tasks_to_run))
+        task_id = progress.add_task("[bold green]順序同步中...", total=len(tasks_to_run))
 
-            future_to_task = {
-                executor.submit(_sync_single_day, db, client, site, date, sync_mode): (site, date)
-                for site, date in tasks_to_run
-            }
+        # 順序處理每個任務，避免並行導致的 API 限制和 SSL 錯誤
+        for site, date in tasks_to_run:
+            try:
+                day_stats = _sync_single_day(db, client, site, date, sync_mode)
+                for key in total_stats:
+                    if key in day_stats:
+                        total_stats[key] += day_stats[key]
+            except RetryError as e:
+                logger.error(
+                    f"同步失敗 [站點: {site['name']}, 日期: {date}]: "
+                    f"多次嘗試後仍然失敗。最後一次錯誤: {e.last_attempt.exception()}"
+                )
+                total_stats["failed"] += 1
+            except Exception as exc:
+                logger.error(f"任務 {site['name']}-{date} 產生未預期的例外: {exc}")
+                logger.debug(traceback.format_exc())
+                total_stats["failed"] += 1
 
-            for future in concurrent.futures.as_completed(future_to_task):
-                site, date = future_to_task[future]
-                try:
-                    day_stats = future.result()
-                    for key in total_stats:
-                        if key in day_stats:
-                            total_stats[key] += day_stats[key]
-                except RetryError as e:
-                    logger.error(
-                        f"同步失敗 [站點: {site['name']}, 日期: {date}]: "
-                        f"多次嘗試後仍然失敗。最後一次錯誤: {e.last_attempt.exception()}"
-                    )
-                    total_stats["failed"] += 1
-                except Exception as exc:
-                    logger.error(f"任務 {site['name']}-{date} 產生未預期的例外: {exc}")
-                    logger.debug(traceback.format_exc())
-                    total_stats["failed"] += 1
-
-                progress.update(task_id, advance=1)
+            progress.update(task_id, advance=1)
 
     _print_final_summary(total_stats)
 
@@ -344,7 +332,7 @@ class BulkDataSynchronizer:
         end_date: Optional[str] = None,
         days: int = 2,
         sync_mode: SyncMode = SyncMode.OVERWRITE,
-        max_workers: int = 2,  # 默認減少到 2 個 worker
+        max_workers: Optional[int] = None,  # 保留參數以保持向後兼容性，但不再使用
     ):
         """Run the synchronization process."""
         return run_sync(
@@ -356,5 +344,5 @@ class BulkDataSynchronizer:
             end_date=end_date,
             days=days,
             sync_mode=sync_mode,
-            max_workers=max_workers,
+            max_workers=1,  # 強制使用順序處理
         )

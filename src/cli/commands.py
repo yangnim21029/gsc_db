@@ -81,10 +81,11 @@ def sync_daily(
     sync_mode: SyncMode = typer.Option(
         SyncMode.SKIP.value, help="同步模式：'skip' (跳過已存在) 或 'overwrite' (覆蓋)。"
     ),
-    max_workers: int = typer.Option(2, help="最大併發工作者數量（建議：1-2）。"),
 ):
     """
     執行每日數據同步。
+
+    注意：此命令使用順序處理模式，確保 GSC API 調用的穩定性。
     """
     if not site_id and not all_sites:
         console.print("錯誤：必須提供 --site-id 或 --all-sites 其中一個選項。")
@@ -100,7 +101,6 @@ def sync_daily(
         site_id=site_id,
         days=days,
         sync_mode=sync_mode,
-        max_workers=max_workers,
     )
 
 
@@ -173,6 +173,137 @@ def sync_hourly(
         raise typer.Exit(code=1)
 
 
+@sync_app.command("multiple")
+def sync_multiple(
+    ctx: typer.Context,
+    site_ids: str = typer.Argument(..., help="要同步的網站 ID 列表，以空格分隔，例如 '1 2 3'"),
+    days: int = typer.Option(7, help="要回溯同步的天數。"),
+    sync_mode: SyncMode = typer.Option(
+        SyncMode.SKIP.value, help="同步模式：'skip' (跳過已存在) 或 'overwrite' (覆蓋)。"
+    ),
+):
+    """
+    批次同步多個網站。
+
+    此命令會依序同步指定的多個網站，提供詳細的進度報告和錯誤處理。
+    由於 GSC API 的限制，所有同步都是順序進行的。
+
+    範例：
+        gsc-cli sync multiple "1 2 3" --days 7
+        gsc-cli sync multiple "1 3 5" --days 14 --sync-mode overwrite
+    """
+    import time
+    from datetime import datetime
+
+    # 解析網站 ID 列表
+    try:
+        site_id_list = [int(site_id.strip()) for site_id in site_ids.split() if site_id.strip()]
+    except ValueError:
+        console.print("❌ [red]錯誤：網站 ID 必須是數字[/red]")
+        console.print("💡 正確格式：gsc-cli sync multiple '1 2 3' --days 7")
+        raise typer.Exit(code=1)
+
+    if not site_id_list:
+        console.print("❌ [red]錯誤：必須提供至少一個網站 ID[/red]")
+        raise typer.Exit(code=1)
+
+    # 驗證所有網站 ID 是否存在
+    site_service = ctx.obj.site_service()
+    all_sites = site_service.get_all_sites()
+    site_dict = {site["id"]: site for site in all_sites}
+
+    invalid_ids = [site_id for site_id in site_id_list if site_id not in site_dict]
+    if invalid_ids:
+        console.print(f"❌ [red]錯誤：以下網站 ID 不存在：{invalid_ids}[/red]")
+        console.print("💡 使用 'gsc-cli site list' 查看可用的網站")
+        raise typer.Exit(code=1)
+
+    # 開始批次同步
+    console.print(f"🚀 [bold blue]開始批次同步網站：{site_id_list} (過去 {days} 天)[/bold blue]")
+    console.print(f"📊 [cyan]共需同步 {len(site_id_list)} 個網站[/cyan]")
+    console.print(f"⚙️ [yellow]同步模式：{sync_mode.value}[/yellow]")
+    console.print()
+
+    # 統計變數
+    success_count = 0
+    failure_count = 0
+    failed_sites = []
+    start_time = time.time()
+
+    # 獲取同步服務
+    synchronizer = ctx.obj.bulk_data_synchronizer()
+
+    # 逐個同步網站
+    for i, site_id in enumerate(site_id_list, 1):
+        site_info = site_dict[site_id]
+        current_time = datetime.now().strftime("%H:%M:%S")
+
+        console.print(
+            f"--- [bold cyan]正在同步網站 ID: {site_id} (進度: {i}/{len(site_id_list)})[/bold cyan] ---"
+        )
+        console.print(
+            f"📅 [dim]{current_time}[/dim] 🌐 [green]{site_info['name']}[/green] ([blue]{site_info['domain']}[/blue])"
+        )
+
+        site_start_time = time.time()
+
+        try:
+            # 執行同步
+            synchronizer.run_sync(
+                all_sites=False,
+                site_id=site_id,
+                days=days,
+                sync_mode=sync_mode,
+            )
+
+            # 計算耗時
+            site_end_time = time.time()
+            duration = int(site_end_time - site_start_time)
+            success_count += 1
+
+            console.print(
+                f"✅ [bold green]網站 ID {site_id} 同步成功[/bold green] [dim](耗時: {duration}秒)[/dim]"
+            )
+
+        except Exception as e:
+            # 計算耗時
+            site_end_time = time.time()
+            duration = int(site_end_time - site_start_time)
+            failure_count += 1
+            failed_sites.append(site_id)
+
+            console.print(
+                f"❌ [bold red]網站 ID {site_id} 同步失敗[/bold red] [dim](耗時: {duration}秒)[/dim]"
+            )
+            console.print(f"   [red]錯誤：{str(e)}[/red]")
+
+        console.print()
+
+        # 在網站間添加小延遲，避免 API 限制
+        if i < len(site_id_list):
+            time.sleep(1)
+
+    # 總結報告
+    total_time = int(time.time() - start_time)
+    console.print("=" * 60)
+    console.print(f"📈 [bold blue]批次同步完成！[/bold blue] [dim](總耗時: {total_time}秒)[/dim]")
+    console.print(f"  ✅ [bold green]成功: {success_count} 個網站[/bold green]")
+    console.print(f"  ❌ [bold red]失敗: {failure_count} 個網站[/bold red]")
+
+    if failed_sites:
+        console.print(f"  🔧 [yellow]失敗的網站ID: {failed_sites}[/yellow]")
+        console.print()
+        console.print("💡 [bold green]建議處理失敗的網站:[/bold green]")
+        console.print("  gsc-cli network-check                    # 檢查網絡連接")
+        console.print("  gsc-cli sync daily --site-id <ID>       # 重試單個網站")
+        console.print("  gsc-cli sync status --site-id <ID>      # 檢查具體狀態")
+        console.print('  gsc-cli sync multiple "<失敗的ID>"      # 重試失敗的網站')
+
+    # 設定退出碼
+    if failure_count > 0:
+        raise typer.Exit(code=1)
+
+
 @sync_app.command("status")
 def sync_status(
     ctx: typer.Context,
@@ -237,7 +368,7 @@ def sync_status(
 
     # 2. 獲取資料庫連接並查詢同步狀態
     try:
-        database_service = ctx.obj.database_service()
+        database_service = ctx.obj.database()
 
         # 獲取最近的同步記錄
         query = """
@@ -248,13 +379,14 @@ def sync_status(
             COUNT(pd.id) as total_records,
             COUNT(CASE WHEN pd.date >= date('now', '-7 days') THEN 1 END) as recent_records
         FROM sites s
-        LEFT JOIN performance_data pd ON s.domain = pd.site_url
+        LEFT JOIN gsc_performance_data pd ON s.id = pd.site_id
         WHERE s.id = ? OR ? IS NULL
         GROUP BY s.id, s.name, s.domain
         ORDER BY last_sync_date DESC
         """
 
-        results = database_service.fetch_all(query, (site_id, site_id))
+        with database_service._lock:
+            results = database_service._connection.execute(query, (site_id, site_id)).fetchall()
 
         if results:
             # 創建狀態表格
@@ -303,23 +435,22 @@ def sync_status(
 
             recent_query = """
             SELECT
-                s.name as site_name,
                 pd.date,
                 COUNT(*) as records_count,
                 AVG(pd.clicks) as avg_clicks,
                 AVG(pd.impressions) as avg_impressions
-            FROM performance_data pd
-            JOIN sites s ON pd.site_url = s.domain
-            WHERE pd.date >= date('now', '-30 days')
-            AND (s.id = ? OR ? IS NULL)
-            GROUP BY s.name, pd.date
+            FROM gsc_performance_data pd
+            WHERE pd.site_id = ?
+            AND pd.date >= date('now', '-30 days')
+            GROUP BY pd.date
             ORDER BY pd.date DESC
             LIMIT ?
             """
 
-            recent_results = database_service.fetch_all(
-                recent_query, (site_id, site_id, show_recent)
-            )
+            with database_service._lock:
+                recent_results = database_service._connection.execute(
+                    recent_query, (site_id, site_id, show_recent)
+                ).fetchall()
 
             if recent_results:
                 recent_table = Table(show_header=True, header_style="bold cyan")
@@ -347,11 +478,11 @@ def sync_status(
 
     # 4. 提供實用的下一步建議
     console.print("\n💡 [bold green]實用命令:[/bold green]")
-    console.print("  just sync-site <site_id> [days]     # 同步特定網站")
-    console.print('  just sync-multiple "1 2 3"          # 批次同步多個網站')
-    console.print("  just smart-sync                     # 智能同步所有網站")
-    console.print("  just check-processes                # 檢查運行中的進程")
-    console.print("  just kill-processes                 # 停止所有同步進程")
+    console.print("  gsc-cli sync daily --site-id <ID>      # 同步特定網站")
+    console.print('  gsc-cli sync multiple "1 2 3"          # 批次同步多個網站')
+    console.print("  gsc-cli sync daily --all-sites         # 同步所有網站")
+    console.print("  gsc-cli network-check                  # 檢查網絡連接")
+    console.print("  gsc-cli sync status --site-id <ID>     # 查看特定網站狀態")
 
 
 @analyze_app.command("report")
@@ -421,7 +552,7 @@ def network_check():
         console.print("\n💡 [bold green]修復建議:[/bold green]")
         console.print("1. 檢查網絡連接是否穩定")
         console.print("2. 嘗試重新運行同步命令")
-        console.print("3. 如果問題持續，請使用 'gsc sync --max-workers 1' 降低並發數")
+        console.print("3. 如果問題持續，請使用 'just conservative-sync' 命令")
         console.print("4. 檢查防火牆和代理設定")
     else:
         console.print("\n✅ [bold green]網絡連接正常！[/bold green]")

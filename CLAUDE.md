@@ -49,36 +49,28 @@ just sync-site <site_id> [days]
 just sync-site 1 7
 
 # Batch sync multiple sites
-just sync-multiple "1 3 5" [days]       # Enhanced with progress tracking & error handling
-just batch-sync "1 3 5" [days]          # Windows-optimized with detailed logging
+just sync-multiple "1 3 5" [days]       # Sequential sync with progress tracking
 
 # Monitor sync progress and status
 just sync-status                         # View all sites sync status
 just sync-status [site_id]              # View specific site status
 
-# Smart sync with network diagnostics
-just smart-sync [site_id] [days]
-just conservative-sync [site_id] [days]  # single-threaded, for SSL issues
-just adaptive-sync [site_id] [days]      # auto-adjust concurrency
-just turbo-sync [site_id] [days]         # high-performance mode
-
 # Full maintenance (sync all, backup, cleanup)
 just maintenance
 ```
 
-### Windows Compatibility Improvements
+### Sync Process Information
 
-The project now includes enhanced Windows support:
+The sync system uses sequential processing for reliability:
 
-- **Cross-platform sync commands**: All sync commands now work seamlessly on both Windows and Unix systems
-- **Windows-optimized batch sync**: `just batch-sync` provides enhanced error handling and detailed logging for Windows environments
-- **Progress monitoring**: Real-time progress tracking with success/failure counts and timing information
-- **Proper process management**: Windows-compatible process checking and management
-- **Error recovery guidance**: Intelligent suggestions for handling sync failures based on the specific error context
+- **Sequential processing**: All sync operations are performed sequentially to ensure GSC API stability
+- **Progress tracking**: Real-time progress monitoring with detailed success/failure reporting
+- **Error handling**: Comprehensive error handling with intelligent recovery suggestions
+- **Cross-platform compatibility**: Works seamlessly on both Windows and Unix systems
 
 ### Sync Status and Monitoring
 
-Instead of using inappropriate commands like `sync daily --day1 --all-sites` to check progress, use:
+Use these commands to monitor sync progress:
 
 ```bash
 # Check current sync status
@@ -87,11 +79,8 @@ just sync-status
 # Monitor specific site
 just sync-status 5
 
-# Check running processes
-just check-processes
-
 # View recent sync activity
-poetry run gsc-cli sync status --show-recent 20
+poetry run gsc-cli sync status
 ```
 
 ### Site Management
@@ -114,20 +103,12 @@ just prod-server
 
 ### Utilities
 ```bash
-# Network diagnostics
-just network-check
-
-# Process management
-just check-processes
-just kill-processes
-
 # Sitemap redundancy analysis
 just sitemap-redundancy --site-id <id>
 just sitemap-help
 
 # Backup management
 just list-large-backups [count]
-just clean-all  # DANGEROUS: deletes all data
 ```
 
 ## Architecture Overview

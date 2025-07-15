@@ -83,6 +83,10 @@ sync-custom *ARGS:
 sync-multiple site_ids days='7':
     poetry run gsc-cli sync multiple "{{ site_ids }}" --days {{ days }}
 
+# # 批次同步多個網站的小時級數據。 用法: `just sync-hourly-multiple "1 2 3" [days]`
+sync-hourly-multiple site_ids days='1':
+    poetry run gsc-cli sync hourly-multiple "{{ site_ids }}" --days {{ days }}
+
 # # 查看同步狀態和進度監控。 用法: `just sync-status [site_id]`
 sync-status site_id="":
     @if [ "{{ site_id }}" = "" ]; then \

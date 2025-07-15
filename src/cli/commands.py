@@ -304,6 +304,157 @@ def sync_multiple(
         raise typer.Exit(code=1)
 
 
+@sync_app.command("hourly-multiple")
+def sync_hourly_multiple(
+    ctx: typer.Context,
+    site_ids: str = typer.Argument(..., help="要同步的網站 ID 列表，以空格分隔，例如 '1 2 3'"),
+    days: int = typer.Option(1, help="要回溯同步的天數（默認：1）。"),
+    force_overwrite: bool = typer.Option(False, "--force", help="強制覆蓋已存在的小時數據。"),
+):
+    """
+    批次同步多個網站的小時級數據。
+
+    此命令會依序同步指定的多個網站的小時級性能數據，提供詳細的進度報告和錯誤處理。
+    注意：小時數據通常只有最近幾天的數據可用。
+
+    範例：
+        gsc-cli sync hourly-multiple "1 2 3" --days 1
+        gsc-cli sync hourly-multiple "4 5 6" --days 2 --force
+    """
+    import time
+    from datetime import datetime
+
+    # 解析網站 ID 列表
+    try:
+        site_id_list = [int(site_id.strip()) for site_id in site_ids.split() if site_id.strip()]
+    except ValueError:
+        console.print("❌ [red]錯誤：網站 ID 必須是數字[/red]")
+        console.print("💡 正確格式：gsc-cli sync hourly-multiple '1 2 3' --days 1")
+        raise typer.Exit(code=1)
+
+    if not site_id_list:
+        console.print("❌ [red]錯誤：必須提供至少一個網站 ID[/red]")
+        raise typer.Exit(code=1)
+
+    # 驗證所有網站 ID 是否存在
+    site_service = ctx.obj.site_service()
+    all_sites = site_service.get_all_sites()
+    site_dict = {site["id"]: site for site in all_sites}
+
+    invalid_ids = [site_id for site_id in site_id_list if site_id not in site_dict]
+    if invalid_ids:
+        console.print(f"❌ [red]錯誤：以下網站 ID 不存在：{invalid_ids}[/red]")
+        console.print("💡 使用 'gsc-cli site list' 查看可用的網站")
+        raise typer.Exit(code=1)
+
+    # 開始批次同步
+    console.print(
+        f"🔄 [bold blue]開始批次同步小時級數據：{site_id_list} (過去 {days} 天)[/bold blue]"
+    )
+    console.print(f"📊 [cyan]共需同步 {len(site_id_list)} 個網站[/cyan]")
+    console.print(f"⚙️ [yellow]同步模式：{'覆蓋' if force_overwrite else '跳過已存在'}[/yellow]")
+    console.print()
+
+    # 統計變數
+    success_count = 0
+    failure_count = 0
+    failed_sites = []
+    total_records = 0
+    start_time = time.time()
+
+    # 獲取小時數據服務
+    hourly_service = ctx.obj.hourly_data_service()
+
+    # 逐個同步網站
+    for i, site_id in enumerate(site_id_list, 1):
+        site_info = site_dict[site_id]
+        current_time = datetime.now().strftime("%H:%M:%S")
+
+        console.print(
+            f"--- [bold cyan]正在同步網站 ID: {site_id} (進度: {i}/{len(site_id_list)})[/bold cyan] ---"
+        )
+        console.print(
+            f"📅 [dim]{current_time}[/dim] 🌐 [green]{site_info['name']}[/green] ([blue]{site_info['domain']}[/blue])"
+        )
+
+        site_start_time = time.time()
+
+        try:
+            # 計算日期範圍
+            from datetime import timedelta
+
+            end_date = datetime.now() - timedelta(days=1)  # 昨天
+            start_date = end_date - timedelta(days=days - 1)
+
+            start_date_str = start_date.strftime("%Y-%m-%d")
+            end_date_str = end_date.strftime("%Y-%m-%d")
+
+            # 執行小時數據同步
+            from src.services.database import SyncMode
+
+            sync_mode = SyncMode.OVERWRITE if force_overwrite else SyncMode.SKIP
+
+            result = hourly_service.sync_hourly_data(
+                site_url=site_info["domain"],
+                start_date=start_date_str,
+                end_date=end_date_str,
+                sync_mode=sync_mode,
+            )
+
+            # 計算耗時
+            site_end_time = time.time()
+            duration = int(site_end_time - site_start_time)
+            success_count += 1
+
+            inserted_records = result.get("inserted", 0) if result else 0
+            total_records += inserted_records
+
+            console.print(
+                f"✅ [bold green]網站 ID {site_id} 同步成功[/bold green] [dim](耗時: {duration}秒)[/dim]"
+            )
+            console.print(f"   📈 [cyan]新增記錄：{inserted_records} 筆[/cyan]")
+
+        except Exception as e:
+            # 計算耗時
+            site_end_time = time.time()
+            duration = int(site_end_time - site_start_time)
+            failure_count += 1
+            failed_sites.append(site_id)
+
+            console.print(
+                f"❌ [bold red]網站 ID {site_id} 同步失敗[/bold red] [dim](耗時: {duration}秒)[/dim]"
+            )
+            console.print(f"   [red]錯誤：{str(e)}[/red]")
+
+        console.print()
+
+        # 在網站間添加小延遲，避免 API 限制
+        if i < len(site_id_list):
+            time.sleep(1)
+
+    # 總結報告
+    total_time = int(time.time() - start_time)
+    console.print("=" * 60)
+    console.print(
+        f"🕐 [bold blue]小時級數據批次同步完成！[/bold blue] [dim](總耗時: {total_time}秒)[/dim]"
+    )
+    console.print(f"  ✅ [bold green]成功: {success_count} 個網站[/bold green]")
+    console.print(f"  ❌ [bold red]失敗: {failure_count} 個網站[/bold red]")
+    console.print(f"  📈 [bold cyan]總計新增記錄: {total_records} 筆[/bold cyan]")
+
+    if failed_sites:
+        console.print(f"  🔧 [yellow]失敗的網站ID: {failed_sites}[/yellow]")
+        console.print()
+        console.print("💡 [bold green]建議處理失敗的網站:[/bold green]")
+        console.print("  gsc-cli sync hourly <ID> --days 1      # 重試單個網站")
+        console.print("  gsc-cli sync status --site-id <ID>     # 檢查具體狀態")
+        console.print('  gsc-cli sync hourly-multiple "<失敗的ID>" --days 1  # 重試失敗的網站')
+
+    # 設定退出碼
+    if failure_count > 0:
+        raise typer.Exit(code=1)
+
+
 @sync_app.command("status")
 def sync_status(
     ctx: typer.Context,

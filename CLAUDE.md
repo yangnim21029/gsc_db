@@ -53,9 +53,13 @@ just sync-multiple "1 3 5" [days]       # Sequential sync with progress tracking
 
 # Hourly data synchronization (last few days only)
 poetry run gsc-cli sync hourly <site_id> --days <days>
+just sync-hourly-multiple "1 3 5" [days]    # Multiple sites hourly sync
 
 # Example: Sync hourly data for site ID 5, last 2 days
 poetry run gsc-cli sync hourly 5 --days 2
+
+# Example: Sync multiple sites hourly data, last 1 day
+just sync-hourly-multiple "4 5 11 16" 1
 
 # Monitor sync progress and status
 just sync-status                         # View all sites sync status
@@ -126,6 +130,8 @@ poetry run gsc-cli sync multiple "1 3 5" --days 14
 
 # Hourly sync
 poetry run gsc-cli sync hourly 5 --days 2 --force
+poetry run gsc-cli sync hourly-multiple "4 5 11 16" --days 1
+poetry run gsc-cli sync hourly-multiple "21 16" --days 2 --force
 
 # Analysis
 poetry run gsc-cli analyze report 5 --days 30

@@ -386,7 +386,7 @@ poetry run gsc-cli sync multiple "1 3 5" --days 7
 poetry run gsc-cli sync hourly-multiple "1 3 5" --days 2
 
 # 5. 查看所有可用指令
-just --list
+poetry run gsc-cli --help
 ```
 
 > 📋 **使用提示**: 先用 `poetry run gsc-cli sync status` 查看站點狀態，再決定需要同步哪些站點
@@ -394,8 +394,8 @@ just --list
 ### 1. 查看可用指令
 
 ```bash
-# 列出所有可用的 just 任務
-just --list
+# 列出所有可用的指令
+poetry run gsc-cli --help
 ```
 
 ### 2. 站點管理

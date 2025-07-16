@@ -372,6 +372,7 @@ poetry run gsc-cli sync status
 
 ### 🎯 最常用的 5 個指令
 
+#### macOS/Linux:
 ```bash
 # 1. 查看所有站點狀態 (最重要!)
 poetry run gsc-cli sync status
@@ -387,6 +388,24 @@ poetry run gsc-cli sync hourly-multiple "1 3 5" --days 2
 
 # 5. 查看所有可用指令
 poetry run gsc-cli --help
+```
+
+#### Windows （如果上面命令不工作）:
+```powershell
+# 1. 查看所有站點狀態
+poetry run python -m src.app sync status
+
+# 2. 同步單個站點
+poetry run python -m src.app sync daily --site-id 1 --days 7
+
+# 3. 批次同步多個站點
+poetry run python -m src.app sync multiple "1 3 5" --days 7
+
+# 4. 小時級批次同步
+poetry run python -m src.app sync hourly-multiple "1 3 5" --days 2
+
+# 5. 查看所有可用指令
+poetry run python -m src.app --help
 ```
 
 > 📋 **使用提示**: 先用 `poetry run gsc-cli sync status` 查看站點狀態，再決定需要同步哪些站點
@@ -624,29 +643,59 @@ poetry run python -m src.analysis.hourly_performance_analyzer
 3. **開始使用**
 
    ```bash
-   # 添加站點
+   # macOS/Linux
    poetry run gsc-cli site add "sc-domain:your-site.com"
-
-   # 查看狀態
    poetry run gsc-cli sync status
-
-   # 開始同步
    poetry run gsc-cli sync daily --site-id 1 --days 7
+   poetry run gsc-cli sync multiple "1 2 3" --days 7
+   ```
+
+   ```powershell
+   # Windows - 如果上面的命令不工作，請嘗試：
+   poetry run python -m src.app site add "sc-domain:your-site.com"
+   poetry run python -m src.app sync status
+   poetry run python -m src.app sync daily --site-id 1 --days 7
+   poetry run python -m src.app sync multiple "1 2 3" --days 7
    ```
 
 ### 常見問題排除
 
-如果遇到問題，請嘗試：
-
+#### macOS/Linux 用戶
 ```bash
 # 查看所有可用命令
 poetry run gsc-cli --help
+poetry run gsc-cli sync multiple "1 2 3" --days 7
+```
 
-# 檢查同步狀態
-poetry run gsc-cli sync status
+#### Windows 用戶
+如果遇到命令不存在的問題，請按順序嘗試：
 
-# 查看站點列表
-poetry run gsc-cli site list
+```powershell
+# 方法 1: 標準命令（大部分情況下會有效）
+poetry run gsc-cli sync multiple "1 2 3" --days 7
+
+# 方法 2: 如果方法 1 不工作，嘗試加上 .cmd 後綴
+poetry run gsc-cli.cmd sync multiple "1 2 3" --days 7
+
+# 方法 3: 直接調用 Python 模塊（最可靠）
+poetry run python -m src.app sync multiple "1 2 3" --days 7
+
+# 方法 4: 進入 Poetry shell 然後執行
+poetry shell
+gsc-cli sync multiple "1 2 3" --days 7
+```
+
+#### 一般除錯步驟
+```bash
+# 檢查 Poetry 環境
+poetry env info
+
+# 重新安裝依賴
+poetry install
+
+# 查看所有可用命令
+poetry run gsc-cli --help
+poetry run gsc-cli sync --help
 ```
 
 **💡 提示**: 所有同步命令在各種平台上都能正常工作，使用統一的 `poetry run gsc-cli` 命令即可。

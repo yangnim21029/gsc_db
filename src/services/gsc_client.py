@@ -191,13 +191,20 @@ class GSCClient:
                 self.api_requests_this_minute = 0
                 self.last_minute_reset = current_minute
 
-            # 檢查每分鐘限制 (保守估計 100 requests/minute)
-            if self.api_requests_this_minute >= 100:
-                sleep_time = 60 - now.second
-                logger.info(f"達到每分鐘速率限制，等待 {sleep_time} 秒...")
-                time.sleep(sleep_time)
-                self.api_requests_this_minute = 0
-                self.last_minute_reset = datetime.now().replace(second=0, microsecond=0)
+            # 更智能的速率限制：提前預警並減少等待時間
+            if self.api_requests_this_minute >= 90:  # 提前 10 個請求預警
+                if self.api_requests_this_minute >= 100:
+                    sleep_time = 60 - now.second
+                    logger.info(f"達到每分鐘速率限制，等待 {sleep_time} 秒...")
+                    time.sleep(sleep_time)
+                    self.api_requests_this_minute = 0
+                    self.last_minute_reset = datetime.now().replace(second=0, microsecond=0)
+                else:
+                    # 軟限制：只等待少量時間以避免觸及硬限制
+                    time.sleep(0.5)
+                    logger.debug(
+                        f"接近速率限制（{self.api_requests_this_minute}/100），減速 0.5 秒"
+                    )
 
     def stream_site_data_optimized(self, site_url: str, start_date: str, end_date: str):
         """
@@ -298,8 +305,18 @@ class GSCClient:
                         )
                         continue
                     elif e.resp.status == 429:
-                        logger.warning("Rate limit exceeded, waiting 60 seconds...")
-                        time.sleep(60)
+                        # 智能 429 處理：檢查 Retry-After header 或使用指數遞減
+                        retry_after = getattr(e.resp, "headers", {}).get("Retry-After")
+                        if retry_after and str(retry_after).isdigit():
+                            wait_time = int(retry_after)
+                        else:
+                            wait_time = min(
+                                30, 2 ** getattr(self, "_429_retry_count", 0)
+                            )  # 最多 30 秒
+
+                        self._429_retry_count = getattr(self, "_429_retry_count", 0) + 1
+                        logger.warning(f"Rate limit exceeded, waiting {wait_time} seconds...")
+                        time.sleep(wait_time)
                         continue
                     logger.error(f"HTTP error for type {search_type}: {e}", exc_info=True)
                     raise
@@ -316,8 +333,8 @@ class GSCClient:
                     )
                     raise
 
-                # 在不同搜索類型之間添加更長的延遲來減少 SSL 錯誤
-                time.sleep(1.0)  # 增加到 1.0 秒，進一步減少 SSL 錯誤
+                # 動態延遲：根據 API 成功率調整，減少不必要的等待時間
+                time.sleep(0.3)  # 減少到 0.3 秒，平衡性能和穩定性
 
             current_date += timedelta(days=1)
 

@@ -76,7 +76,7 @@
 
 - **Skip 模式優化**: 正確處理已存在數據的跳過邏輯
 - **序列化 API 調用**: 避免併發問題，確保同步穩定性
-- **完整的錯誤處理**: 網路問題自動重試，SSL 錯誤智能處理
+- **完整的錯誤處理**: 網路問題自動重試，智能錯誤恢復
 
 ## ✨ 核心功能
 
@@ -223,9 +223,6 @@ cargo install just
     poetry install
     poetry run gsc-cli auth login
 
-    # Windows 替代方案 (如果 Just 安裝有問題)
-    # 雙擊 setup.bat 檔案，或在 PowerShell/CMD 中執行：
-    setup.bat
     ```
 
 3.  **設定 Google API 認證**
@@ -267,7 +264,6 @@ cargo install just
     # 執行認證流程
     poetry run gsc-cli auth login
     ```
-
 
 ### 🔧 常見設定問題與解決方案
 
@@ -341,19 +337,17 @@ poetry run gsc-cli sync status 5
 
 - **解決方案**：
   1. 重新安裝 Just (參考上方 Windows 安裝指南)
-  2. 使用 Windows 批次檔案：雙擊 `setup.bat` 進行初始化
-  3. 或使用替代命令：`poetry run python -m src.app [參數]`
+     直接使用 Poetry 命令：`poetry run gsc-cli [子命令] [參數]`
 
 **❌ SSL/網路連接問題**
 
-- **解決方案**：系統會自動重試和處理 SSL 錯誤
+- **解決方案**：系統會自動重試和處理網路錯誤
 
   ```bash
-  # 如果同步失敗，系統會自動重試
-  # 可以檢查同步狀態了解詳情
+  # 檢查同步狀態
   poetry run gsc-cli sync status
 
-  # 強制重新同步問題站點
+  # 重新同步問題站點
   poetry run gsc-cli sync daily --site-id 5 --days 7 --sync-mode overwrite
   ```
 
@@ -396,7 +390,6 @@ just --list
 ```
 
 > 📋 **使用提示**: 先用 `poetry run gsc-cli sync status` 查看站點狀態，再決定需要同步哪些站點
-
 
 ### 1. 查看可用指令
 
@@ -596,59 +589,56 @@ poetry run python -m src.analysis.hourly_performance_analyzer
 - [ ] **Web 儀表板**: 建立一個簡單的網頁介面，用以視覺化數據並與 AI Agent 互動
 - [ ] **插件系統**: 允許使用者輕鬆地加入自訂的數據擷取器或分析模組
 
-## 🚀 Windows 用戶快速開始指南
+## 🚀 快速開始指南
 
-如果您是 Windows 用戶且希望快速開始使用本工具，可以按照以下步驟：
+所有平台用戶都可以按照以下步驟快速開始：
 
-### 快速安裝 (Windows)
+### 快速安裝
 
-1. **下載並安裝 Python 3.11+**
-   - 前往 [Python 官網](https://www.python.org/downloads/) 下載安裝
-   - ✅ 記得勾選「Add Python to PATH」
+1. **安裝 Python 3.11+ 和 Poetry**
 
-2. **安裝 Poetry**
-   ```powershell
-   pip install poetry
+   ```bash
+   # macOS
+   brew install python poetry
+
+   # Windows
+   # 1. 下載 Python: https://www.python.org/downloads/
+   # 2. 安裝 Poetry: pip install poetry
+
+   # Linux
+   sudo apt install python3.11 python3-pip
+   pip3 install poetry
    ```
 
-3. **克隆專案並設置**
-   ```powershell
+2. **克隆專案並設置**
+
+   ```bash
    git clone <repository-url>
    cd gsc_db
 
-   # 使用 Windows 批次檔案進行設置（如果 Just 安裝有問題）
-   .\setup.bat
-
-   # 或使用 Python 設置腳本
-   python setup.py
-   ```
-
-4. **安裝依賴並認證**
-   ```powershell
+   # 安裝依賴並設置認證
    poetry install
    poetry run gsc-cli auth login
    ```
 
-5. **開始使用同步命令**
-   ```powershell
-   # 添加第一個站點
+3. **開始使用**
+
+   ```bash
+   # 添加站點
    poetry run gsc-cli site add "sc-domain:your-site.com"
 
-   # 查看同步狀態
+   # 查看狀態
    poetry run gsc-cli sync status
 
-   # 開始同步數據
+   # 開始同步
    poetry run gsc-cli sync daily --site-id 1 --days 7
-
-   # 批次同步多個站點
-   poetry run gsc-cli sync multiple "1 2 3" --days 7
    ```
 
-### Windows 專用故障排除
+### 常見問題排除
 
 如果遇到問題，請嘗試：
 
-```powershell
+```bash
 # 查看所有可用命令
 poetry run gsc-cli --help
 
@@ -659,7 +649,7 @@ poetry run gsc-cli sync status
 poetry run gsc-cli site list
 ```
 
-**💡 提示**: 所有同步命令在 Windows 上都能正常工作，使用標準的 `sync-multiple` 和 `sync-hourly-multiple` 命令即可。
+**💡 提示**: 所有同步命令在各種平台上都能正常工作，使用統一的 `poetry run gsc-cli` 命令即可。
 
 ## 🤝 如何貢獻
 

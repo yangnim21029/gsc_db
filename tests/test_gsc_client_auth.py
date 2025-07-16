@@ -52,6 +52,13 @@ def test_auth_with_expired_token_and_successful_refresh(mock_build, mock_db):
     mock_creds.valid = False
     mock_creds.expired = True
     mock_creds.refresh_token = "some_refresh_token"
+    mock_creds.to_json.return_value = '{"token": "mock_token"}'  # Return valid JSON string
+
+    # 設定 refresh 後 credentials 變為 valid
+    def make_valid_after_refresh(*args, **kwargs):
+        mock_creds.valid = True
+
+    mock_creds.refresh.side_effect = make_valid_after_refresh
 
     with patch("src.services.gsc_client.os.path.exists", return_value=True):
         with patch(

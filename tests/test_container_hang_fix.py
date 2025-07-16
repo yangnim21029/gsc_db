@@ -195,11 +195,11 @@ class TestContainerHangFix:
         assert services["site_service"]._gsc_client is services["gsc_client"]
         print("✅ 服務依賴關係正確")
 
-    @patch("src.services.gsc_client.GSCClient._load_credentials")
-    def test_gsc_client_without_network(self, mock_load_creds):
+    @patch("src.services.gsc_client.GSCClient.authenticate")
+    def test_gsc_client_without_network(self, mock_authenticate):
         """測試在沒有網絡連接時 GSC 客戶端的行為"""
-        # 模擬沒有憑證的情況
-        mock_load_creds.return_value = False
+        # 模擬認證失敗的情況
+        mock_authenticate.side_effect = Exception("Network unavailable")
 
         def create_gsc_client_no_network():
             container = Container()

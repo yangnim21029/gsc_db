@@ -25,6 +25,11 @@ def test_sync_single_day_in_skip_mode():
     mock_db = MagicMock()
     mock_client = MagicMock()
 
+    # 模擬資料庫連接和查詢結果
+    mock_result = MagicMock()
+    mock_result.__getitem__.return_value = 0  # 當取得 result["count"] 時返回 0
+    mock_db._connection.execute.return_value.fetchone.return_value = mock_result
+
     # 模擬 GSC 客戶端返回一個包含兩個數據塊的數據流
     mock_client.stream_site_data.return_value = [
         ("desktop", "web", [{"page": "/page1", "query": "q1"}]),

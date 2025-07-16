@@ -62,7 +62,7 @@
 
 ### 📊 進度監控與狀態追蹤
 
-- **實時同步狀態**: `just sync-status` 命令顯示所有站點的同步狀態和進度
+- **實時同步狀態**: `poetry run gsc-cli sync status` 命令顯示所有站點的同步狀態和進度
 - **進度指示器**: 批次同步時顯示 "站點 X / Y" 進度，包含耗時統計
 - **智能錯誤恢復**: 失敗時提供具體的故障排除建議和下一步行動
 
@@ -101,7 +101,7 @@
 **🚀 一鍵開始使用**
 
 - 📱 **簡單命令**: 不需複雜設定，幾個指令就能開始
-  _→ 封裝複雜邏輯為 `just` 命令，如 `just sync-site 1 7`_
+  _→ 封裝複雜邏輯為 `just` 命令，如 `poetry run gsc-cli sync daily --site-id 1 --days 7`_
 - 📊 **現成報告**: 立即生成 Excel 報告，直接用於分析
   _→ 內建 pandas 處理，自動格式化，支援中文檔名_
 - 🤖 **為 AI 分析準備**: 數據格式標準化，方便餵給 AI 工具分析
@@ -113,9 +113,9 @@
 
 1. **安裝工具**: `Python 3.11+` + `Poetry` + `Just`
 2. **克隆專案**: `git clone <repo-url> && cd gsc_db`
-3. **一鍵設定**: `just bootstrap` (安裝依賴 + 引導認證)
-4. **開始同步**: `just sync-site 1 7` (同步站點 1 的最近 7 天)
-5. **查看狀態**: `just sync-status` (檢查所有站點狀態)
+3. **一鍵設定**: `poetry install && poetry run gsc-cli auth login`
+4. **開始同步**: `poetry run gsc-cli sync daily --site-id 1 --days 7` (同步站點 1 的最近 7 天)
+5. **查看狀態**: `poetry run gsc-cli sync status` (檢查所有站點狀態)
 
 > 💡 **新手提示**: 如果是第一次使用，建議先閱讀下面的詳細安裝指南
 
@@ -125,13 +125,12 @@
 
 - **Python 3.11+**
 - **Poetry** (依賴管理)
-- **Just** (任務執行器)
 
 安裝必要工具：
 
 ```bash
 # macOS (使用 Homebrew)
-brew install just poetry
+brew install poetry
 
 # 或者使用 pipx 安裝 Poetry
 pipx install poetry
@@ -154,7 +153,7 @@ pipx install poetry
 pip install poetry
 ```
 
-**Step 3: 安裝 Just (任務執行器)**
+**Step 3: 驗證安裝**
 
 選擇以下其中一種方法安裝 Just：
 
@@ -221,7 +220,8 @@ cargo install just
 
     ```bash
     # macOS / Linux / Windows (如果已安裝 Just)
-    just bootstrap
+    poetry install
+    poetry run gsc-cli auth login
 
     # Windows 替代方案 (如果 Just 安裝有問題)
     # 雙擊 setup.bat 檔案，或在 PowerShell/CMD 中執行：
@@ -265,7 +265,7 @@ cargo install just
     cp ~/Downloads/client_secret_xxxxx.json cred/client_secret.json
 
     # 執行認證流程
-    just auth
+    poetry run gsc-cli auth login
     ```
 
 
@@ -292,16 +292,16 @@ cargo install just
 
 ```powershell
 # 日級數據批次同步
-just sync-multiple "1 3 5" 7
+poetry run gsc-cli sync multiple "1 3 5" --days 7
 
 # 小時級數據批次同步
-just sync-hourly-multiple "1 3 5" 2
+poetry run gsc-cli sync hourly-multiple "1 3 5" --days 2
 
 # 查看實時同步狀態
-just sync-status
+poetry run gsc-cli sync status
 
 # 監控特定站點進度
-just sync-status 5
+poetry run gsc-cli sync status 5
 ```
 
 **✅ 同步模式最佳實踐**
@@ -312,7 +312,7 @@ just sync-status 5
 
 **⚠️ 重要提醒**
 
-- ❌ **錯誤做法**：使用不存在的命令如 `batch-sync`, `smart-sync` 等
+- ❌ **錯誤做法**：使用不存在的命令
 - ✅ **正確做法**：使用 `sync-multiple`, `sync-hourly-multiple`, `sync-status`
 
 #### 常見錯誤與解決方法
@@ -351,7 +351,7 @@ just sync-status 5
   ```bash
   # 如果同步失敗，系統會自動重試
   # 可以檢查同步狀態了解詳情
-  just sync-status
+  poetry run gsc-cli sync status
 
   # 強制重新同步問題站點
   poetry run gsc-cli sync daily --site-id 5 --days 7 --sync-mode overwrite
@@ -363,13 +363,13 @@ just sync-status 5
 
 ```bash
 # 1. 檢查專案結構
-just init
+# 檢查專案結構 (不需要特別初始化)
 
 # 2. 驗證認證
-just site-list
+poetry run gsc-cli site list
 
 # 3. 測試同步功能
-just sync-status
+poetry run gsc-cli sync status
 
 # 4. 如果一切正常，應該會看到您 GSC 帳號中的網站列表
 ```
@@ -380,24 +380,23 @@ just sync-status
 
 ```bash
 # 1. 查看所有站點狀態 (最重要!)
-just sync-status
+poetry run gsc-cli sync status
 
 # 2. 同步單個站點
-just sync-site 1 7
+poetry run gsc-cli sync daily --site-id 1 --days 7
 
 # 3. 批次同步多個站點
-just sync-multiple "1 3 5" 7
+poetry run gsc-cli sync multiple "1 3 5" --days 7
 
 # 4. 小時級批次同步
-just sync-hourly-multiple "1 3 5" 2
+poetry run gsc-cli sync hourly-multiple "1 3 5" --days 2
 
 # 5. 查看所有可用指令
 just --list
 ```
 
-> 📋 **使用提示**: 先用 `just sync-status` 查看站點狀態，再決定需要同步哪些站點
+> 📋 **使用提示**: 先用 `poetry run gsc-cli sync status` 查看站點狀態，再決定需要同步哪些站點
 
-所有常用操作都已封裝為 `just` 任務。執行 `just --list` 可以查看所有可用的指令。
 
 ### 1. 查看可用指令
 
@@ -410,10 +409,10 @@ just --list
 
 ```bash
 # 列出所有已配置的站點（本地數據庫 + 遠程 GSC 帳戶）
-just site-list
+poetry run gsc-cli site list
 
 # 新增一個站點到本地數據庫
-just site-add "sc-domain:your-site.com"
+poetry run gsc-cli site add "sc-domain:your-site.com"
 ```
 
 ### 3. 數據同步
@@ -422,27 +421,27 @@ just site-add "sc-domain:your-site.com"
 
 ```bash
 # 同步站點 ID 為 1 的最近 7 天數據
-just sync-site 1 7
+poetry run gsc-cli sync daily --site-id 1 --days 7
 
 # 同步站點 ID 為 1 的最近 14 天數據
-just sync-site 1 14
+poetry run gsc-cli sync daily --site-id 1 --days 14
 
 # 執行完整的每日維護程序（同步所有站點、備份資料庫、清理舊備份）
-just maintenance
+poetry run gsc-cli sync daily --all-sites --days 7
 ```
 
 #### 📊 多站點批次同步
 
 ```bash
 # 批次同步多個站點 (日級數據)
-just sync-multiple "1 3 5" 7
+poetry run gsc-cli sync multiple "1 3 5" --days 7
 
 # 批次同步多個站點 (小時級數據)
-just sync-hourly-multiple "1 3 5" 2
+poetry run gsc-cli sync hourly-multiple "1 3 5" --days 2
 
 # 查看同步狀態和進度監控
-just sync-status              # 查看所有站點狀態
-just sync-status 5            # 查看特定站點狀態
+poetry run gsc-cli sync status              # 查看所有站點狀態
+poetry run gsc-cli sync status 5            # 查看特定站點狀態
 ```
 
 #### 🎯 同步模式選擇
@@ -466,23 +465,23 @@ poetry run gsc-cli sync hourly-multiple "4 5 6" --days 1 --force
 poetry run gsc-cli analyze report 5 --days 30
 
 # 自定義同步參數
-just sync-custom daily --all-sites --days 3
+poetry run gsc-cli sync daily --all-sites --days 3
 ```
 
 ### 4. 開發與測試
 
 ```bash
 # 執行所有品質檢查（程式碼風格、類型檢查、測試）
-just check
+poetry run ruff check . && poetry run mypy . && poetry run pytest
 
 # 只執行測試
-just test
+poetry run pytest
 
 # 只執行類型檢查
-just type-check
+poetry run mypy .
 
 # 程式碼格式化
-just lint
+poetry run ruff format .
 ```
 
 ## 🤖 API 服務
@@ -493,10 +492,10 @@ just lint
 
 ```bash
 # 啟動開發伺服器（具備自動重載功能）
-just dev-server
+poetry run uvicorn src.web.api:app --reload
 
 # 啟動生產伺服器
-just prod-server
+poetry run uvicorn src.web.api:app
 ```
 
 ### API 文檔
@@ -512,13 +511,13 @@ just prod-server
 
 ```bash
 # 安裝依賴（包括開發依賴）
-just setup
+poetry install
 
 # 安裝 pre-commit hooks
 poetry run pre-commit install
 
 # 執行完整檢查
-just check
+poetry run ruff check . && poetry run mypy . && poetry run pytest
 ```
 
 ### 專案結構
@@ -536,7 +535,7 @@ gsc_db/
 ├── data/                  # 數據庫文件
 ├── logs/                  # 日誌文件
 ├── reports/               # 分析報告
-└── justfile              # 任務定義
+└── pyproject.toml        # Poetry 依賴定義
 ```
 
 ### 品質保證
@@ -555,13 +554,10 @@ gsc_db/
 
 ```bash
 # 執行所有測試（已解決並發死鎖問題，穩定運行）
-just test
+poetry run pytest
 
 # 執行特定測試
 poetry run pytest tests/test_integration.py -v
-
-# 執行並行測試（可選，在某些情況下可能需要更多資源）
-just test-parallel
 
 # 執行測試並生成覆蓋率報告
 poetry run pytest --cov=src tests/
@@ -683,10 +679,10 @@ poetry run gsc-cli site list
 
 ```bash
 # 所有檢查都通過
-just check
+poetry run ruff check . && poetry run mypy . && poetry run pytest
 
 # 測試覆蓋率良好
-just test
+poetry run pytest --cov=src
 ```
 
 ## 📄 授權條款

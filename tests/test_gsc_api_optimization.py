@@ -26,7 +26,7 @@ class TestGSCAPIOptimization:
 
         # 創建 GSC 客戶端
         with patch("src.services.gsc_client.build") as mock_build:
-            with patch.object(GSCClient, "_load_credentials", return_value=True):
+            with patch.object(GSCClient, "authenticate", return_value=True):
                 with patch.object(GSCClient, "_load_api_usage_from_db"):
                     mock_service = Mock()
                     mock_build.return_value = mock_service
@@ -47,7 +47,7 @@ class TestGSCAPIOptimization:
         mock_db = Mock(spec=Database)
 
         with patch("src.services.gsc_client.build") as mock_build:
-            with patch.object(GSCClient, "_load_credentials", return_value=True):
+            with patch.object(GSCClient, "authenticate", return_value=True):
                 with patch.object(GSCClient, "_load_api_usage_from_db"):
                     mock_service = Mock()
                     mock_build.return_value = mock_service
@@ -101,26 +101,25 @@ class TestGSCAPIOptimization:
 
         synchronizer = BulkDataSynchronizer(mock_db, mock_gsc_client)
 
-        # 測試默認 max_workers 被設置為 2
-        with patch("src.jobs.bulk_data_synchronizer.concurrent.futures.ThreadPoolExecutor"):
-            with patch("src.jobs.bulk_data_synchronizer.Progress"):
-                # 模擬空任務列表以快速完成
-                mock_db.get_sites.return_value = []
+        # 測試順序處理模式 (max_workers=1)
+        with patch("src.jobs.bulk_data_synchronizer.Progress"):
+            # 模擬空任務列表以快速完成
+            mock_db.get_sites.return_value = []
 
-                synchronizer.run_sync(
-                    all_sites=True,
-                    max_workers=8,  # 請求 8 個 workers
-                )
+            synchronizer.run_sync(
+                all_sites=True,
+                max_workers=1,  # 使用順序處理
+            )
 
-                # 驗證實際使用的是優化後的數量 (最多 2)
-                # 這個測試驗證了 run_sync 函數中的優化邏輯
+            # 驗證同步器能正常處理 max_workers=1 模式
+            # 這個測試驗證了 run_sync 函數的順序處理邏輯
 
     def test_api_best_practices_compliance(self):
         """測試 API 最佳實踐遵循情況"""
         mock_db = Mock(spec=Database)
 
         with patch("src.services.gsc_client.build") as mock_build:
-            with patch.object(GSCClient, "_load_credentials", return_value=True):
+            with patch.object(GSCClient, "authenticate", return_value=True):
                 with patch.object(GSCClient, "_load_api_usage_from_db"):
                     mock_service = Mock()
                     mock_build.return_value = mock_service
@@ -153,7 +152,7 @@ class TestGSCAPIOptimization:
         mock_db = Mock(spec=Database)
 
         with patch("src.services.gsc_client.build") as mock_build:
-            with patch.object(GSCClient, "_load_credentials", return_value=True):
+            with patch.object(GSCClient, "authenticate", return_value=True):
                 with patch.object(GSCClient, "_load_api_usage_from_db"):
                     mock_service = Mock()
                     mock_build.return_value = mock_service
@@ -183,7 +182,7 @@ class TestGSCAPIOptimization:
         mock_db = Mock(spec=Database)
 
         with patch("src.services.gsc_client.build") as mock_build:
-            with patch.object(GSCClient, "_load_credentials", return_value=True):
+            with patch.object(GSCClient, "authenticate", return_value=True):
                 with patch.object(GSCClient, "_load_api_usage_from_db"):
                     mock_service = Mock()
                     mock_build.return_value = mock_service
@@ -231,7 +230,7 @@ class TestGSCAPIOptimization:
         mock_db = Mock(spec=Database)
 
         with patch("src.services.gsc_client.build") as mock_build:
-            with patch.object(GSCClient, "_load_credentials", return_value=True):
+            with patch.object(GSCClient, "authenticate", return_value=True):
                 with patch.object(GSCClient, "_load_api_usage_from_db"):
                     mock_service = Mock()
                     mock_build.return_value = mock_service

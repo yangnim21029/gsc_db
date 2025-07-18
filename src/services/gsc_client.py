@@ -259,6 +259,9 @@ class GSCClient:
 
                         self._track_api_request()
 
+                        # Reset retry count after successful request
+                        self._429_retry_count = 0
+
                         rows = response.get("rows", [])
                         if not rows:
                             break
@@ -333,8 +336,10 @@ class GSCClient:
                     )
                     raise
 
-                # 動態延遲：根據 API 成功率調整，減少不必要的等待時間
-                time.sleep(0.3)  # 減少到 0.3 秒，平衡性能和穩定性
+                # 動態延遲：只在需要時才延遲
+                # 如果接近速率限制才延遲，否則不延遲
+                if self.api_requests_this_minute >= 50:
+                    time.sleep(0.1)  # 接近限制時稍微減速
 
             current_date += timedelta(days=1)
 
@@ -376,6 +381,9 @@ class GSCClient:
                 )
 
                 self._track_api_request()
+
+                # Reset retry count after successful request
+                self._429_retry_count = 0
 
                 rows = response.get("rows", [])
                 if not rows:
@@ -881,6 +889,8 @@ class GSCClient:
                 self.service.searchanalytics().query(siteUrl=site_url, body=request).execute()
             )
             self._track_api_request()
+            # Reset retry count after successful request
+            self._429_retry_count = 0
             rows: List[Dict[str, Any]] = response.get("rows", [])
             return rows
         except HttpError as e:
@@ -939,6 +949,8 @@ class GSCClient:
                     self.service.searchanalytics().query(siteUrl=site_url, body=request).execute()
                 )
                 self._track_api_request()
+                # Reset retry count after successful request
+                self._429_retry_count = 0
 
                 rows = response.get("rows", [])
                 if not rows:

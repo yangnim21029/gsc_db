@@ -38,6 +38,12 @@ just test-parallel # parallel test execution (may hang in some cases)
 
 # Pre-commit checks only (excludes lint)
 just check-commit
+
+# Run a specific test
+poetry run pytest tests/test_specific.py::test_function_name -v
+
+# Run tests with coverage
+poetry run pytest --cov=src --cov-report=html
 ```
 
 ### Data Synchronization
@@ -77,6 +83,7 @@ The sync system uses sequential processing for reliability:
 - **Progress tracking**: Real-time progress monitoring with detailed success/failure reporting
 - **Error handling**: Comprehensive error handling with intelligent recovery suggestions
 - **Cross-platform compatibility**: Works seamlessly on both Windows and Unix systems
+- **Data availability delay**: GSC daily data typically has a 2-3 day processing delay. Attempting to sync data from the last 3 days may result in HTTP 403 errors
 
 ### Sync Modes
 
@@ -177,23 +184,40 @@ just list-large-backups [count]
 ## Architecture Overview
 
 ### Core Structure
-- **src/app.py**: Main CLI entry point using Typer
-- **src/containers.py**: Dependency injection container using dependency-injector
+- **src/app.py**: Main CLI entry point using Typer with dependency injection context
+- **src/containers.py**: Dependency injection container using dependency-injector pattern
+  - Shared database connection with thread-safe locking
+  - Singleton services for all components
+  - Container instance passed through Typer context
 - **src/config.py**: Pydantic-based configuration management with TOML support
+  - Environment variable override with `__` delimiter for nested values
+  - Automatic path resolution relative to project root
 
 ### Service Layer
 - **src/services/database.py**: SQLite database operations with thread-safe connection handling
+  - Single connection with `check_same_thread=False`
+  - `threading.RLock` for reentrant locking
+  - `isolation_level=None` for auto-commit mode
+  - Sync modes: skip (default) and overwrite
 - **src/services/gsc_client.py**: Google Search Console API client with retry logic
+  - Sequential processing with `max_workers=1` for API stability
+  - Exponential backoff retry with Tenacity
+  - Per-minute and daily quota tracking
 - **src/services/site_service.py**: Site management operations
 - **src/services/hourly_database.py**: Hourly data synchronization service
 - **src/services/analysis_service.py**: Data analysis and reporting
+- **src/services/data_aggregation_service.py**: Efficient batch data aggregation
 
 ### CLI Commands
 - **src/cli/commands.py**: Typer command definitions organized into sub-apps:
   - auth_app: Google API authentication
   - site_app: Site management
-  - sync_app: Data synchronization
+  - sync_app: Data synchronization (daily/hourly with sequential processing)
   - analyze_app: Data analysis and reporting
+  - All commands receive services via dependency injection
+
+### Jobs
+- **src/jobs/bulk_data_synchronizer.py**: Batch sync orchestrator with progress tracking
 
 ### Analysis Modules
 - **src/analysis/hourly_performance_analyzer.py**: Hourly traffic analysis
@@ -201,12 +225,18 @@ just list-large-backups [count]
 
 ### Web API
 - **src/web/api.py**: FastAPI server for external integrations
+  - RESTful endpoints at `/api/v1/`
+  - Shared container instance with CLI
+  - Automatic OpenAPI documentation
 - **src/web/schemas.py**: Pydantic response models
 
 ### Utilities
 - **src/utils/rich_console.py**: Rich terminal output configuration
 - **src/utils/system_health_check.py**: Network connectivity diagnostics
 - **src/utils/state_manager.py**: Application state management
+  - Sync progress tracking
+  - Last sync timestamps per site
+  - Recovery from interrupted syncs
 
 ## Key Technologies
 
@@ -271,21 +301,44 @@ The application uses sequential processing with careful resource management:
 
 ## Important Notes
 
+### Critical Design Decisions
+
+1. **Sequential Processing is Intentional**: Never use parallel processing for GSC API calls. The `max_workers=1` setting prevents API rate limiting and SSL errors.
+
+2. **Database Locking Strategy**: All database operations must acquire the shared lock to prevent "database is locked" errors. The lock is reentrant to support nested operations.
+
+3. **Path Resolution**: All paths in configuration are resolved relative to the project root for portability.
+
+4. **Shared Container Instance**: The dependency injection container is shared between CLI and API to maintain singleton services.
+
+5. **File-based Test Databases**: Tests use file-based SQLite databases, not `:memory:`, for pytest-xdist compatibility.
+
 ### Network Issues
 The application includes sophisticated network error handling for common GSC API issues:
-- SSL handshake failures
-- Connection timeouts
-- Certificate validation errors
+- SSL handshake failures with automatic retry
+- Connection timeouts with exponential backoff
+- Certificate validation errors with diagnostic messages
+- Health check system for connectivity troubleshooting
 
-The system automatically handles network connectivity issues with built-in retry logic and error recovery.
+### Development Patterns
 
-### Cursor Rules Integration
-This project includes Cursor-specific development rules:
-- **Python/FastAPI patterns**: Functional programming, RORO pattern, proper error handling
-- **Interactive feedback requirements**: MCP interactive_feedback must be called during processes
+1. **Dependency Injection**: Services are injected via the container, never instantiated directly in commands.
+
+2. **Error Recovery**: All sync operations support resumption from the last successful state.
+
+3. **Quota Management**: API quotas are tracked per-minute and per-day with automatic reset logic.
+
+4. **Configuration Override**: Use environment variables like `GSC__PATHS__DATABASE` to override nested config values.
+
+### Testing Considerations
+
+- Run `just test` for sequential tests or `just test-parallel` for parallel execution
+- Use `just check` before commits to run all quality checks
+- Integration tests validate actual GSC API interactions when credentials are available
+- README functionality tests ensure documentation accuracy
 
 ### Data Safety
 - Automatic daily backups to `data/backups/`
-- Compression of backup files
+- Compression of backup files with gzip
 - 30-day backup retention policy
-- Backup files are automatically managed with 30-day retention
+- Backup naming includes timestamp for easy identification

@@ -219,7 +219,7 @@ class GSCClient:
         if not self.is_authenticated():
             raise Exception("GSC service not initialized or authentication failed")
 
-        search_types = ["web", "image", "video", "news", "discover", "googleNews"]
+        search_types = ["web", "image", "video", "news"]
 
         # 按日期分組，每天處理一次
         current_date = datetime.strptime(start_date, "%Y-%m-%d")

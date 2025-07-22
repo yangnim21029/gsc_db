@@ -558,3 +558,81 @@ class AnalysisService:
         # site_info = self.db.get_site_by_id(site_id) # Removed unused variable
         # ... (完整的 Markdown 生成代碼)
         return True
+
+    def get_page_keyword_performance(
+        self, site_id: int, days: Optional[int] = None, max_results: int = 1000
+    ) -> List[Dict[str, Any]]:
+        """
+        Get page performance data with aggregated keywords for each URL.
+
+        Args:
+            site_id: Site ID to query
+            days: Number of days to look back (None for all time)
+            max_results: Maximum number of results to return
+
+        Returns:
+            List of dictionaries containing page performance data with keywords
+        """
+        # Build date filter
+        date_clause = ""
+        params = [site_id]
+
+        if days and days > 0:
+            from datetime import datetime, timedelta
+
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            date_clause = "AND date >= ?"
+            params.append(start_date.strftime("%Y-%m-%d"))
+
+        # Query to aggregate performance data by page with keywords
+        query = f"""
+        SELECT
+            page as url,
+            SUM(clicks) as total_clicks,
+            SUM(impressions) as total_impressions,
+            AVG(ctr) as avg_ctr,
+            AVG(position) as avg_position,
+            GROUP_CONCAT(DISTINCT query) as keywords,
+            COUNT(DISTINCT query) as keyword_count
+        FROM gsc_performance_data
+        WHERE site_id = ? {date_clause}
+        AND (clicks > 0 OR impressions > 0)  -- Only include pages with performance
+        GROUP BY page
+        ORDER BY total_clicks DESC
+        LIMIT ?
+        """
+
+        params.append(max_results)
+
+        try:
+            with self.db._lock:
+                results = self.db._connection.execute(query, params).fetchall()
+
+            performance_data = []
+            for row in results:
+                # Split keywords by delimiter
+                keywords_str = row[5] or ""
+                keywords = [k.strip() for k in keywords_str.split(",") if k.strip()]
+
+                performance_data.append(
+                    {
+                        "url": row[0],
+                        "total_clicks": int(row[1] or 0),
+                        "total_impressions": int(row[2] or 0),
+                        "avg_ctr": round((row[3] or 0) * 100, 3),  # Convert to percentage
+                        "avg_position": round(row[4] or 0, 2),
+                        "keywords": keywords,  # Return all keywords
+                        "keyword_count": row[6] or 0,
+                    }
+                )
+
+            logger.info(
+                f"Retrieved page keyword performance data for site {site_id}: "
+                f"{len(performance_data)} pages"
+            )
+            return performance_data
+
+        except Exception as e:
+            logger.error(f"Error getting page keyword performance for site {site_id}: {str(e)}")
+            return []

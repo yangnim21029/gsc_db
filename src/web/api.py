@@ -6,9 +6,13 @@ service layer. It acts as the "storefront" for the data, providing a standard
 HTTP interface for future AI Agents or Web UIs.
 """
 
+import csv
+import io
+from datetime import datetime
 from typing import List
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from src.containers import Container
 from src.services.analysis_service import AnalysisService
@@ -533,3 +537,280 @@ def get_hourly_ranking_data(
         total_results=len(hourly_data),
         data=hourly_data,
     )
+
+
+@app.post(
+    "/api/v1/page-keyword-performance/",
+    response_model=schemas.PageKeywordPerformanceResponse,
+    tags=["Analytics"],
+)
+def get_page_keyword_performance(
+    request: schemas.PageKeywordPerformanceRequest,
+    analysis_service: AnalysisService = Depends(get_analysis_service),
+    site_service: SiteService = Depends(get_site_service),
+):
+    """
+    Get page performance data with aggregated keywords for each URL.
+
+    This endpoint provides a comprehensive view of page performance including:
+    - Total clicks and impressions per URL
+    - All keywords that drive traffic to each URL
+    - Keyword count for each URL
+    - Results sorted by total clicks (highest performing pages first)
+
+    ## Site Identification
+    You can use either `site_id` or `hostname` to identify the site:
+
+    ### Using hostname:
+    ```json
+    {
+      "hostname": "hkg.hankyu-hanshin-dept.co.jp",
+      "days": 30,
+      "max_results": 100
+    }
+    ```
+
+    ### Supported hostname formats:
+    - `example.com` - Plain domain name
+    - `sc-domain:example.com` - GSC format
+    - `https://example.com` - Full URL with protocol
+
+    ## Response Format
+    Returns one record per URL with:
+    - Aggregated performance metrics (clicks, impressions, CTR, position)
+    - List of all keywords that brought traffic to that URL
+    - Total keyword count
+
+    ## Use Cases
+    - Identify top performing pages and their driving keywords
+    - Analyze keyword diversity for each page
+    - Find pages with high impressions but low clicks
+    - Content optimization based on keyword-page relationships
+
+    ## Limits
+    - **Max Results**: Default 1000 records, Maximum 10000 records
+    - **Keywords per URL**: Limited to first 50 keywords to avoid oversized responses
+    """
+    # Validate that either site_id or hostname is provided
+    if not request.site_id and not request.hostname:
+        raise HTTPException(status_code=400, detail="Either site_id or hostname must be provided")
+
+    if request.site_id and request.hostname:
+        raise HTTPException(
+            status_code=400, detail="Only one of site_id or hostname should be provided"
+        )
+
+    # Resolve site_id from hostname if needed
+    site_id = request.site_id
+    if request.hostname:
+        site = site_service.get_site_by_domain(request.hostname)
+        if not site:
+            raise HTTPException(
+                status_code=404, detail=f"Site with hostname '{request.hostname}' not found"
+            )
+        site_id = site["id"]
+
+    # Validate site exists (for site_id case)
+    if request.site_id:
+        site = site_service.get_site_by_id(request.site_id)
+        if not site:
+            raise HTTPException(status_code=404, detail=f"Site with ID {request.site_id} not found")
+
+    # Validate max_results parameter
+    if request.max_results and (request.max_results < 1 or request.max_results > 10000):
+        raise HTTPException(status_code=400, detail="max_results must be between 1 and 10000")
+
+    # Get page keyword performance data
+    performance_data = analysis_service.get_page_keyword_performance(
+        site_id=site_id, days=request.days, max_results=request.max_results or 1000
+    )
+
+    # Convert to response format
+    performance_items = []
+    for item in performance_data:
+        performance_item = schemas.PageKeywordPerformanceItem(
+            url=item["url"],
+            total_clicks=item["total_clicks"],
+            total_impressions=item["total_impressions"],
+            avg_ctr=item["avg_ctr"],
+            avg_position=item["avg_position"],
+            keywords=item["keywords"],
+            keyword_count=item["keyword_count"],
+        )
+        performance_items.append(performance_item)
+
+    # Determine time range description
+    if request.days:
+        time_range = f"Last {request.days} days"
+    else:
+        time_range = "All time"
+
+    return schemas.PageKeywordPerformanceResponse(
+        site_id=site_id,
+        time_range=time_range,
+        total_results=len(performance_items),
+        data=performance_items,
+    )
+
+
+@app.get(
+    "/api/v1/page-keyword-performance/csv/",
+    tags=["Analytics"],
+    response_class=StreamingResponse,
+)
+def download_page_keyword_performance_csv(
+    site_id: int = Query(None, description="Site ID to query"),
+    hostname: str = Query(None, description="Site hostname"),
+    days: int = Query(None, description="Number of days to look back from today"),
+    max_results: int = Query(5000, description="Maximum number of results", le=10000),
+    format: str = Query("summary", description="CSV format: 'summary' or 'detailed'"),
+    analysis_service: AnalysisService = Depends(get_analysis_service),
+    site_service: SiteService = Depends(get_site_service),
+):
+    """
+    Download page keyword performance data as CSV file.
+
+    This endpoint provides the same data as `/api/v1/page-keyword-performance/`
+    but returns it as a downloadable CSV file.
+
+    ## Parameters
+    - **site_id** or **hostname**: Site identification (one required)
+    - **days**: Number of days to look back (optional, default: all time)
+    - **max_results**: Maximum results (default: 5000, max: 10000)
+    - **format**: CSV format
+      - `summary`: One row per URL with keywords concatenated
+      - `detailed`: One row per keyword (larger file)
+
+    ## Examples
+    - `/api/v1/page-keyword-performance/csv/?site_id=14&days=30&format=summary`
+    - `/api/v1/page-keyword-performance/csv/?hostname=example.com&format=detailed`
+
+    ## Note
+    For very large datasets, consider using pagination or the command-line export script.
+    """
+    # Validate that either site_id or hostname is provided
+    if not site_id and not hostname:
+        raise HTTPException(status_code=400, detail="Either site_id or hostname must be provided")
+
+    if site_id and hostname:
+        raise HTTPException(
+            status_code=400, detail="Only one of site_id or hostname should be provided"
+        )
+
+    # Resolve site_id from hostname if needed
+    if hostname:
+        site = site_service.get_site_by_domain(hostname)
+        if not site:
+            raise HTTPException(
+                status_code=404, detail=f"Site with hostname '{hostname}' not found"
+            )
+        site_id = site["id"]
+    else:
+        # Validate site exists
+        site = site_service.get_site_by_id(site_id)
+        if not site:
+            raise HTTPException(status_code=404, detail=f"Site with ID {site_id} not found")
+
+    # Get page keyword performance data
+    performance_data = analysis_service.get_page_keyword_performance(
+        site_id=site_id, days=days, max_results=max_results
+    )
+
+    # Generate filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    site_name = site.get("name", f"site_{site_id}").replace(" ", "_").replace("/", "_")
+    filename = f"page_keywords_{site_name}_{timestamp}"
+
+    if format == "detailed":
+        filename += "_detailed.csv"
+        content = generate_detailed_csv(performance_data)
+    else:
+        filename += ".csv"
+        content = generate_summary_csv(performance_data)
+
+    # Return streaming response
+    return StreamingResponse(
+        io.StringIO(content),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Content-Type": "text/csv; charset=utf-8-sig",
+        },
+    )
+
+
+def generate_summary_csv(data: List[dict]) -> str:
+    """Generate summary CSV content (one row per URL)"""
+    output = io.StringIO()
+    # Use utf-8-sig BOM for Excel compatibility
+    output.write("\ufeff")  # BOM
+
+    writer = csv.writer(output)
+    writer.writerow(
+        ["網址", "總點擊數", "總曝光數", "平均點擊率(%)", "平均排名", "關鍵字數量", "關鍵字列表"]
+    )
+
+    for item in data:
+        writer.writerow(
+            [
+                item["url"],
+                item["total_clicks"],
+                item["total_impressions"],
+                f"{item['avg_ctr']:.2f}",
+                f"{item['avg_position']:.1f}",
+                item["keyword_count"],
+                " | ".join(item["keywords"]),
+            ]
+        )
+
+    return output.getvalue()
+
+
+def generate_detailed_csv(data: List[dict]) -> str:
+    """Generate detailed CSV content (one row per keyword)"""
+    output = io.StringIO()
+    # Use utf-8-sig BOM for Excel compatibility
+    output.write("\ufeff")  # BOM
+
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "網址",
+            "關鍵字",
+            "頁面總點擊數",
+            "頁面總曝光數",
+            "頁面平均點擊率(%)",
+            "頁面平均排名",
+            "頁面關鍵字總數",
+        ]
+    )
+
+    for item in data:
+        if item["keywords"]:
+            for keyword in item["keywords"]:
+                writer.writerow(
+                    [
+                        item["url"],
+                        keyword,
+                        item["total_clicks"],
+                        item["total_impressions"],
+                        f"{item['avg_ctr']:.2f}",
+                        f"{item['avg_position']:.1f}",
+                        item["keyword_count"],
+                    ]
+                )
+        else:
+            # If no keywords, still create one row
+            writer.writerow(
+                [
+                    item["url"],
+                    "(無關鍵字)",
+                    item["total_clicks"],
+                    item["total_impressions"],
+                    f"{item['avg_ctr']:.2f}",
+                    f"{item['avg_position']:.1f}",
+                    0,
+                ]
+            )
+
+    return output.getvalue()

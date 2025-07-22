@@ -219,3 +219,51 @@ class HourlyRankingResponse(BaseModel):
     group_by: str = Field(..., description="Grouping method used")
     total_results: int = Field(..., description="Total number of results")
     data: List[HourlyRankingItem] = Field(..., description="Hourly ranking data items")
+
+
+class PageKeywordPerformanceRequest(BaseModel):
+    """
+    Request model for page keyword performance data.
+    """
+
+    site_id: Optional[int] = Field(None, description="Site ID to query", examples=[4])
+    hostname: Optional[str] = Field(
+        None,
+        description="Site hostname (e.g., 'example.com' or 'sc-domain:example.com')",
+        examples=["hkg.hankyu-hanshin-dept.co.jp", "sc-domain:example.com"],
+    )
+    days: Optional[int] = Field(
+        None,
+        description="Number of days to look back from today (default: all time)",
+        examples=[30, 90],
+    )
+    max_results: Optional[int] = Field(
+        default=1000,
+        description="Maximum number of results to return (default: 1000, max: 10000)",
+        examples=[100],
+    )
+
+
+class PageKeywordPerformanceItem(BaseModel):
+    """
+    Single page keyword performance item.
+    """
+
+    url: str = Field(..., description="Page URL")
+    total_clicks: int = Field(..., description="Total clicks for this URL")
+    total_impressions: int = Field(..., description="Total impressions for this URL")
+    avg_ctr: float = Field(..., description="Average click-through rate")
+    avg_position: float = Field(..., description="Average position in search results")
+    keywords: List[str] = Field(..., description="List of keywords for this URL")
+    keyword_count: int = Field(..., description="Number of distinct keywords")
+
+
+class PageKeywordPerformanceResponse(BaseModel):
+    """
+    Response model for page keyword performance data.
+    """
+
+    site_id: int = Field(..., description="Site ID")
+    time_range: str = Field(..., description="Time range for the data")
+    total_results: int = Field(..., description="Total number of results")
+    data: List[PageKeywordPerformanceItem] = Field(..., description="Page performance data items")

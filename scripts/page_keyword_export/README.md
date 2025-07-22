@@ -78,12 +78,15 @@ export_by_hostname("sc-domain:example.com", days=90)
 ## 故障排除
 
 ### API 連接失敗
+
 - 確認服務器正在運行
 - 檢查 BASE_URL 是否正確（默認 http://localhost:8000）
 
 ### 網站 ID 不存在
+
 - 使用 `curl http://localhost:8000/api/v1/sites/` 查看可用網站列表
 
 ### 導出文件亂碼
+
 - 使用支持 UTF-8 的編輯器打開
 - 在 Excel 中通過「數據」->「從文本」導入並選擇 UTF-8 編碼

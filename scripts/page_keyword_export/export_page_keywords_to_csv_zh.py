@@ -15,7 +15,7 @@ ENDPOINT = "/api/v1/page-keyword-performance/"
 OUTPUT_DIR = Path(__file__).parent / "exports"
 
 
-def fetch_page_keyword_data(site_id=None, hostname=None, days=None, max_results=1000):
+def fetch_page_keyword_data(site_id=None, hostname=None, days=None, max_results=1000, query=None):
     """從 API 端點獲取數據"""
 
     # 構建請求數據
@@ -30,6 +30,9 @@ def fetch_page_keyword_data(site_id=None, hostname=None, days=None, max_results=
 
     if days:
         payload["days"] = days
+
+    if query:
+        payload["query"] = query
 
     # 發送 API 請求
     try:
@@ -124,7 +127,10 @@ def main():
 
     # 從 API 獲取數據
     print("正在從 API 獲取數據...")
-    data = fetch_page_keyword_data(site_id=SITE_ID, days=DAYS, max_results=MAX_RESULTS)
+    # 添加 query 參數，只獲取包含 /article 的頁面
+    data = fetch_page_keyword_data(
+        site_id=SITE_ID, days=DAYS, max_results=MAX_RESULTS, query="/article"
+    )
 
     if data:
         print(f"✅ 收到 {data['total_results']} 條結果")
@@ -161,14 +167,14 @@ def main():
         print("❌ 無法從 API 獲取數據")
 
 
-def export_by_hostname(hostname, days=30):
+def export_by_hostname(hostname, days=30, query=None):
     """根據域名導出數據"""
 
     print(f"\n使用域名導出：{hostname}")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filename = f"頁面關鍵字_{hostname.replace(':', '_')}_{timestamp}.csv"
 
-    data = fetch_page_keyword_data(hostname=hostname, days=days, max_results=2000)
+    data = fetch_page_keyword_data(hostname=hostname, days=days, max_results=2000, query=query)
 
     if data:
         export_to_csv(data, output_filename)

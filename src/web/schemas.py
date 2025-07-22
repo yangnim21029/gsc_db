@@ -247,6 +247,11 @@ class PageKeywordPerformanceRequest(BaseModel):
         description="Maximum number of results to return (default: 1000, max: 10000)",
         examples=[100],
     )
+    query: Optional[str] = Field(
+        None,
+        description="Filter URLs containing this text (e.g., '/article' to get only article pages)",
+        examples=["/article", "/blog/", "category"],
+    )
 
 
 class PageKeywordPerformanceItem(BaseModel):

@@ -692,6 +692,10 @@ def get_page_keyword_performance(
         site_id=site_id, days=request.days, max_results=request.max_results or 1000
     )
 
+    # Apply query filter if provided
+    if request.query:
+        performance_data = [item for item in performance_data if request.query in item["url"]]
+
     # Convert to response format
     performance_items = []
     for item in performance_data:
@@ -730,6 +734,7 @@ def download_page_keyword_performance_csv(
     hostname: str = Query(None, description="Site hostname"),
     days: int = Query(None, description="Number of days to look back from today"),
     max_results: int = Query(5000, description="Maximum number of results", le=10000),
+    query: str = Query(None, description="Filter URLs containing this text (e.g., '/article')"),
     analysis_service: AnalysisService = Depends(get_analysis_service),
     site_service: SiteService = Depends(get_site_service),
 ):
@@ -743,10 +748,12 @@ def download_page_keyword_performance_csv(
     - **site_id** or **hostname**: Site identification (one required)
     - **days**: Number of days to look back (optional, default: all time)
     - **max_results**: Maximum results (default: 5000, max: 10000)
+    - **query**: Filter URLs containing this text (optional)
 
     ## Examples
     - `/api/v1/page-keyword-performance/csv/?site_id=14&days=30`
     - `/api/v1/page-keyword-performance/csv/?hostname=example.com&max_results=1000`
+    - `/api/v1/page-keyword-performance/csv/?site_id=14&query=/article`
 
     ## CSV Format
     Each row contains:
@@ -788,6 +795,10 @@ def download_page_keyword_performance_csv(
     performance_data = analysis_service.get_page_keyword_performance(
         site_id=site_id, days=days, max_results=max_results
     )
+
+    # Apply query filter if provided
+    if query:
+        performance_data = [item for item in performance_data if query in item["url"]]
 
     # Generate filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

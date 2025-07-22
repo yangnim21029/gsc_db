@@ -154,7 +154,7 @@ def main():
         print("❌ Failed to fetch data from API")
 
 
-def export_multiple_sites(site_ids):
+def export_multiple_sites(site_ids, days=30):
     """Export data for multiple sites"""
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -163,7 +163,7 @@ def export_multiple_sites(site_ids):
         print(f"\n{'=' * 50}")
         print(f"Processing site ID: {site_id}")
 
-        data = fetch_page_keyword_data(site_id=site_id, days=30, max_results=1000)
+        data = fetch_page_keyword_data(site_id=site_id, days=days, max_results=1000)
 
         if data:
             output_filename = f"page_keywords_site{site_id}_{timestamp}.csv"

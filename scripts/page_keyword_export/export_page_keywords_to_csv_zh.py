@@ -102,66 +102,6 @@ def export_to_csv(data, output_filename):
         return False
 
 
-def export_to_csv_detailed(data, output_filename):
-    """將數據導出為更詳細的 CSV 格式（每個關鍵字一行）"""
-
-    if not data or not data.get("data"):
-        print("沒有數據可以導出")
-        return False
-
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = OUTPUT_DIR / output_filename.replace(".csv", "_detailed.csv")
-
-    try:
-        with open(output_path, "w", newline="", encoding="utf-8-sig") as csvfile:
-            fieldnames = [
-                "網址",
-                "關鍵字",
-                "總點擊數（頁面）",
-                "總曝光數（頁面）",
-                "平均點擊率（頁面）",
-                "平均排名（頁面）",
-                "關鍵字總數（頁面）",
-            ]
-
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-
-            # 為每個關鍵字創建一行
-            for item in data["data"]:
-                if item["keywords"]:
-                    for keyword in item["keywords"]:
-                        row = {
-                            "網址": item["url"],
-                            "關鍵字": keyword,
-                            "總點擊數（頁面）": item["total_clicks"],
-                            "總曝光數（頁面）": item["total_impressions"],
-                            "平均點擊率（頁面）": f"{item['avg_ctr']:.2f}%",
-                            "平均排名（頁面）": f"{item['avg_position']:.1f}",
-                            "關鍵字總數（頁面）": item["keyword_count"],
-                        }
-                        writer.writerow(row)
-                else:
-                    # 如果沒有關鍵字，仍然創建一行
-                    row = {
-                        "網址": item["url"],
-                        "關鍵字": "（無關鍵字）",
-                        "總點擊數（頁面）": item["total_clicks"],
-                        "總曝光數（頁面）": item["total_impressions"],
-                        "平均點擊率（頁面）": f"{item['avg_ctr']:.2f}%",
-                        "平均排名（頁面）": f"{item['avg_position']:.1f}",
-                        "關鍵字總數（頁面）": 0,
-                    }
-                    writer.writerow(row)
-
-        print(f"✅ 詳細數據成功導出到：{output_path}")
-        return True
-
-    except Exception as e:
-        print(f"寫入詳細 CSV 文件時出錯：{str(e)}")
-        return False
-
-
 def main():
     """主函數：獲取並導出數據"""
 
@@ -207,10 +147,6 @@ def main():
         print("\n正在導出為 CSV...")
         export_to_csv(data, output_filename)
 
-        # 也導出詳細版本
-        print("\n正在導出詳細版本（每個關鍵字一行）...")
-        export_to_csv_detailed(data, output_filename)
-
         # 統計摘要
         if data["data"]:
             total_clicks = sum(item["total_clicks"] for item in data["data"])
@@ -236,7 +172,6 @@ def export_by_hostname(hostname, days=30):
 
     if data:
         export_to_csv(data, output_filename)
-        export_to_csv_detailed(data, output_filename)
     else:
         print(f"❌ 無法獲取 {hostname} 的數據")
 

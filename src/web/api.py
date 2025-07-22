@@ -80,18 +80,24 @@ def get_ranking_data(
     - Filter by specific keywords/queries (supporting spaces)
     - Filter by specific page URLs
     - Group results by 'query' or 'page'
+    - Choose between raw data or daily aggregated data
+
+    ## Aggregation Modes
+    - **raw** (default): Original GSC data, may have multiple entries per day for different devices/search types
+    - **daily**: Aggregated data with one entry per query/page per day, positions rounded to integers
 
     ## Site Identification
     You can now use either `site_id` or `hostname` to identify the site:
 
-    ### Using hostname:
+    ### Using hostname with daily aggregation:
     ```json
     {
       "hostname": "hkg.hankyu-hanshin-dept.co.jp",
       "start_date": "2025-07-01",
       "end_date": "2025-07-31",
       "group_by": "query",
-      "max_results": 1000
+      "aggregation_mode": "daily",
+      "max_results": 365
     }
     ```
 
@@ -100,10 +106,14 @@ def get_ranking_data(
     - `sc-domain:example.com` - GSC format
     - `https://example.com` - Full URL with protocol
 
+    ## Default Limits
+    - **raw mode**: Default 1000 results, max 10000
+    - **daily mode**: Default 365 results, max 10000
+
     ## Example usage:
-    - Get all query performance for site 1 in January 2024
-    - Get data using hostname: {"hostname": "example.com", ...}
-    - Get specific keywords like "best hotels" and "台北美食"
+    - Get raw data: {"aggregation_mode": "raw", ...}
+    - Get clean daily data: {"aggregation_mode": "daily", ...}
+    - Filter by specific keywords like "best hotels" and "台北美食"
     - Filter by specific pages like "/hotels" and "/restaurants"
     """
     # Validate that either site_id or hostname is provided
@@ -173,13 +183,65 @@ def get_ranking_data(
             group_by=request.group_by,
         )
 
+    # Process data based on aggregation_mode
+    if request.aggregation_mode == "daily":
+        # Aggregate data by day (similar to daily-data endpoint)
+        from collections import defaultdict
+
+        daily_aggregated = defaultdict(
+            lambda: {"clicks": 0, "impressions": 0, "positions": [], "ctrs": []}
+        )
+
+        # Group data by date and query/page
+        for item in all_data:
+            key = (item["date"], item.get(request.group_by))
+            daily_aggregated[key]["clicks"] += item["clicks"] or 0
+            daily_aggregated[key]["impressions"] += item["impressions"] or 0
+            if item["position"]:
+                daily_aggregated[key]["positions"].append(item["position"])
+            if item["ctr"] is not None:
+                daily_aggregated[key]["ctrs"].append(item["ctr"])
+
+        # Convert aggregated data to list
+        processed_data = []
+        for (date, term), metrics in daily_aggregated.items():
+            avg_position = (
+                sum(metrics["positions"]) / len(metrics["positions"]) if metrics["positions"] else 0
+            )
+            avg_ctr = sum(metrics["ctrs"]) / len(metrics["ctrs"]) if metrics["ctrs"] else 0
+
+            processed_data.append(
+                {
+                    "date": date,
+                    request.group_by: term,
+                    "clicks": metrics["clicks"],
+                    "impressions": metrics["impressions"],
+                    "ctr": avg_ctr,
+                    "position": avg_position,
+                }
+            )
+
+        # Sort by date and term
+        processed_data.sort(key=lambda x: (x["date"], x.get(request.group_by) or ""))
+
+        # Apply different default limits based on mode
+        max_results = request.max_results or (365 if request.aggregation_mode == "daily" else 1000)
+    else:
+        # Raw mode - use original data
+        processed_data = all_data
+        max_results = request.max_results or 1000
+
     # Apply max_results limit
-    max_results = request.max_results or 1000
-    limited_data = all_data[:max_results]
+    limited_data = processed_data[:max_results]
 
     # Convert to response format
     ranking_items = []
     for item in limited_data:
+        # Round position for daily mode
+        position = item["position"] or 0.0
+        if request.aggregation_mode == "daily" and position:
+            position = round(position)
+
         ranking_item = schemas.RankingDataItem(
             date=item["date"],
             query=item.get("query") if request.group_by == "query" else None,
@@ -187,7 +249,7 @@ def get_ranking_data(
             clicks=item["clicks"] or 0,
             impressions=item["impressions"] or 0,
             ctr=item["ctr"] or 0.0,
-            position=item["position"] or 0.0,
+            position=float(position),
         )
         ranking_items.append(ranking_item)
 
@@ -201,13 +263,20 @@ def get_ranking_data(
     )
 
 
-@app.post("/api/v1/daily-data/", response_model=schemas.DailyDataResponse, tags=["Analytics"])
+@app.post(
+    "/api/v1/daily-data/",
+    response_model=schemas.DailyDataResponse,
+    tags=["Analytics"],
+    deprecated=True,
+)
 def get_daily_data(
     request: schemas.DailyDataRequest,
     analysis_service: AnalysisService = Depends(get_analysis_service),
     site_service: SiteService = Depends(get_site_service),
 ):
     """
+    **DEPRECATED**: Use `/api/v1/ranking-data/` with `aggregation_mode: "daily"` instead.
+
     Get daily data similar to /ranking-data/ but with cleaner aggregation.
 
     This endpoint returns the same granular data as /ranking-data/, but:
@@ -215,33 +284,31 @@ def get_daily_data(
     - Position values are rounded to integers for easier analysis
     - Data is pre-aggregated across all devices and search types
 
-    ## Key Differences from /ranking-data/
-    - **Aggregation**: Multiple device/search type entries are combined into daily totals
-    - **Position**: Averaged and rounded to nearest integer
-    - **Performance**: Faster for large date ranges due to pre-aggregation
+    ## Migration Guide
+    Replace calls to this endpoint with `/api/v1/ranking-data/` and add `"aggregation_mode": "daily"`:
 
-    ## Site Identification
-    You can use either `site_id` or `hostname` to identify the site:
-
-    ### Using hostname:
+    ### Old way:
     ```json
+    POST /api/v1/daily-data/
     {
-      "hostname": "hkg.hankyu-hanshin-dept.co.jp",
-      "start_date": "2025-07-01",
-      "end_date": "2025-07-31",
-      "group_by": "query",
-      "max_results": 1000
+      "site_id": 1,
+      "start_date": "2025-01-01",
+      "end_date": "2025-01-31",
+      "group_by": "query"
     }
     ```
 
-    ### Supported hostname formats:
-    - `example.com` - Plain domain name
-    - `sc-domain:example.com` - GSC format
-    - `https://example.com` - Full URL with protocol
-
-    ## Response Format
-    Returns one record per query/page per day, making it cleaner than raw GSC data
-    which can have multiple entries due to different devices and search types.
+    ### New way:
+    ```json
+    POST /api/v1/ranking-data/
+    {
+      "site_id": 1,
+      "start_date": "2025-01-01",
+      "end_date": "2025-01-31",
+      "group_by": "query",
+      "aggregation_mode": "daily"
+    }
+    ```
 
     ## Limits
     - **Date Range**: Maximum 1000 days between start_date and end_date
@@ -663,7 +730,6 @@ def download_page_keyword_performance_csv(
     hostname: str = Query(None, description="Site hostname"),
     days: int = Query(None, description="Number of days to look back from today"),
     max_results: int = Query(5000, description="Maximum number of results", le=10000),
-    format: str = Query("summary", description="CSV format: 'summary' or 'detailed'"),
     analysis_service: AnalysisService = Depends(get_analysis_service),
     site_service: SiteService = Depends(get_site_service),
 ):
@@ -671,22 +737,29 @@ def download_page_keyword_performance_csv(
     Download page keyword performance data as CSV file.
 
     This endpoint provides the same data as `/api/v1/page-keyword-performance/`
-    but returns it as a downloadable CSV file.
+    but returns it as a downloadable CSV file with one row per URL.
 
     ## Parameters
     - **site_id** or **hostname**: Site identification (one required)
     - **days**: Number of days to look back (optional, default: all time)
     - **max_results**: Maximum results (default: 5000, max: 10000)
-    - **format**: CSV format
-      - `summary`: One row per URL with keywords concatenated
-      - `detailed`: One row per keyword (larger file)
 
     ## Examples
-    - `/api/v1/page-keyword-performance/csv/?site_id=14&days=30&format=summary`
-    - `/api/v1/page-keyword-performance/csv/?hostname=example.com&format=detailed`
+    - `/api/v1/page-keyword-performance/csv/?site_id=14&days=30`
+    - `/api/v1/page-keyword-performance/csv/?hostname=example.com&max_results=1000`
+
+    ## CSV Format
+    Each row contains:
+    - URL
+    - Total clicks
+    - Total impressions
+    - Average CTR (%)
+    - Average position
+    - Keyword count
+    - Keywords list (pipe-separated)
 
     ## Note
-    For very large datasets, consider using pagination or the command-line export script.
+    For very large datasets, consider using the command-line export script.
     """
     # Validate that either site_id or hostname is provided
     if not site_id and not hostname:
@@ -719,14 +792,10 @@ def download_page_keyword_performance_csv(
     # Generate filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     site_name = site.get("name", f"site_{site_id}").replace(" ", "_").replace("/", "_")
-    filename = f"page_keywords_{site_name}_{timestamp}"
+    filename = f"page_keywords_{site_name}_{timestamp}.csv"
 
-    if format == "detailed":
-        filename += "_detailed.csv"
-        content = generate_detailed_csv(performance_data)
-    else:
-        filename += ".csv"
-        content = generate_summary_csv(performance_data)
+    # Generate CSV content
+    content = generate_summary_csv(performance_data)
 
     # Return streaming response
     return StreamingResponse(
@@ -762,55 +831,5 @@ def generate_summary_csv(data: List[dict]) -> str:
                 " | ".join(item["keywords"]),
             ]
         )
-
-    return output.getvalue()
-
-
-def generate_detailed_csv(data: List[dict]) -> str:
-    """Generate detailed CSV content (one row per keyword)"""
-    output = io.StringIO()
-    # Use utf-8-sig BOM for Excel compatibility
-    output.write("\ufeff")  # BOM
-
-    writer = csv.writer(output)
-    writer.writerow(
-        [
-            "網址",
-            "關鍵字",
-            "頁面總點擊數",
-            "頁面總曝光數",
-            "頁面平均點擊率(%)",
-            "頁面平均排名",
-            "頁面關鍵字總數",
-        ]
-    )
-
-    for item in data:
-        if item["keywords"]:
-            for keyword in item["keywords"]:
-                writer.writerow(
-                    [
-                        item["url"],
-                        keyword,
-                        item["total_clicks"],
-                        item["total_impressions"],
-                        f"{item['avg_ctr']:.2f}",
-                        f"{item['avg_position']:.1f}",
-                        item["keyword_count"],
-                    ]
-                )
-        else:
-            # If no keywords, still create one row
-            writer.writerow(
-                [
-                    item["url"],
-                    "(無關鍵字)",
-                    item["total_clicks"],
-                    item["total_impressions"],
-                    f"{item['avg_ctr']:.2f}",
-                    f"{item['avg_position']:.1f}",
-                    0,
-                ]
-            )
 
     return output.getvalue()

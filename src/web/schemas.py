@@ -69,6 +69,11 @@ class RankingDataRequest(BaseModel):
         description="Maximum number of results to return (default: 1000, max: 10000)",
         examples=[10],
     )
+    aggregation_mode: Optional[str] = Field(
+        default="raw",
+        description="Data aggregation mode: 'raw' (original data) or 'daily' (aggregated by day)",
+        examples=["daily"],
+    )
 
 
 class RankingDataItem(BaseModel):

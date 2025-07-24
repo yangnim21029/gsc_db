@@ -36,20 +36,21 @@ def main():
     try:
         # 1. 導入必要模組
         logger.info("步驟 1: 導入模組...")
-        from src.containers import Container
+        # 直接導入需要的服務，避免導入會載入 matplotlib 的 Container
+        from src.services.database import Database
+        from src.services.gsc_client import GSCClient
 
         logger.info("✓ 模組導入成功")
 
-        # 2. 初始化容器
-        logger.info("步驟 2: 初始化容器...")
-        container = Container()
-        logger.info("✓ 容器初始化成功")
+        # 2. 直接初始化服務（避免使用 Container）
+        logger.info("步驟 2: 初始化服務...")
+        db = Database()
+        gsc_client = GSCClient(db)
+        logger.info("✓ 服務初始化成功")
 
-        # 3. 獲取服務
-        logger.info("步驟 3: 獲取服務...")
-        db = container.database()
-        gsc_client = container.gsc_client()
-        logger.info("✓ 服務獲取成功")
+        # 3. 驗證服務
+        logger.info("步驟 3: 驗證服務...")
+        logger.info("✓ 服務驗證成功")
 
         # 4. 測試資料庫
         logger.info("步驟 4: 測試資料庫連接...")

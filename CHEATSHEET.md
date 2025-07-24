@@ -78,7 +78,7 @@ POST /api/v1/page-keyword-performance/
 
 URL Filter Examples:
 - `/article` - All article pages
-- `/tag` - All tag pages  
+- `/tag` - All tag pages
 - `/news/` - News section
 - `/category/tech` - Specific category
 - `/author/` - Author pages

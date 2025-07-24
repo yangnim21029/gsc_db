@@ -1,236 +1,257 @@
-# GSC Database Manager - Command Cheatsheet
+# GSC Database API Cheat Sheet
 
-> 如果你沒有安裝 `just` 工具，可以使用這些直接的 Python 命令
+Quick reference for all API endpoints and CLI commands.
 
-## 🚀 快速開始
+## API Server
 
-### 安裝依賴
 ```bash
-poetry install
+# Start development server
+just dev-server  # http://localhost:8000
+
+# Start production server
+just prod-server
 ```
 
-### 查看所有網站
+## Sites Management
+
+### List All Sites
 ```bash
-poetry run python sync.py list
+GET /api/v1/sites?active_only=true
 ```
 
-## 📊 數據同步
-
-### 單站點同步
+### Get Site Details
 ```bash
-# 基本同步（預設 skip 模式，7天）
-poetry run python sync.py sync <site_id>
-
-# 指定天數
-poetry run python sync.py sync <site_id> <days>
-
-# 指定同步模式
-poetry run python sync.py sync <site_id> <days> <sync_mode>
+GET /api/v1/sites/{site_id}
 ```
 
-**同步模式說明：**
-- `skip` (預設): 跳過已存在的記錄，只插入新數據
-- `overwrite`: 覆蓋已存在的記錄（用於數據修正）
-
-**範例：**
+### Create New Site
 ```bash
-# Urban Life 網站同步 7 天，skip 模式
-poetry run python sync.py sync 17 7 skip
-
-# Urban Life 網站同步 14 天，overwrite 模式（覆蓋現有數據）
-poetry run python sync.py sync 17 14 overwrite
-
-# Business Focus 網站同步 3 天，預設 skip 模式
-poetry run python sync.py sync 1 3
+POST /api/v1/sites
+{
+  "domain": "sc-domain:example.com",
+  "name": "Example Site",
+  "category": "news"
+}
 ```
 
-### 多站點順序同步
+## Analytics & Search
+
+### Search Ranking Data
 ```bash
-# 基本多站點同步
-poetry run python sync_multiple.py "1,2,17" 7
-
-# 指定同步模式
-poetry run python sync_multiple.py "1,2,17" 7 skip
-poetry run python sync_multiple.py "1,2,17" 7 overwrite
-
-# 支援空格分隔
-poetry run python sync_multiple.py "1 2 17" 7 overwrite
+POST /api/v1/analytics/ranking-data
+{
+  "hostname": "example.com",      # or use site_id
+  "date_from": "2025-01-01",
+  "date_to": "2025-01-31",
+  "queries": ["keyword1", "keyword2"],
+  "pages": ["url1", "url2"],      # optional
+  "exact_match": false,           # default: true
+  "group_by": ["query", "page"],  # default: ["query"]
+  "limit": 100                    # default: 1000
+}
 ```
 
-**重要提醒：**
-- ⚠️ GSC API 不支持並發！多站點同步會自動使用順序處理
-- 🕐 每個站點間會有 2 秒延遲以遵守 API 限制
-
-## 🌐 API 服務
-
-### 啟動開發服務器
+### Performance Trends
 ```bash
-poetry run uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000
+GET /api/v1/analytics/performance-trends?hostname=example.com&days=30
+# or
+GET /api/v1/analytics/performance-trends?site_id=1&days=30
 ```
 
-### 啟動生產服務器
+Response includes:
+- Daily clicks, impressions, avg position
+- 7-day rolling average
+- Week-over-week changes
+- Cumulative metrics
+
+## Page-Keyword Performance
+
+### Get Performance Data
 ```bash
-poetry run uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+POST /api/v1/page-keyword-performance/
+{
+  "hostname": "example.com",  # or use site_id
+  "days": 30,                 # optional
+  "query": "/article"         # URL filter (optional)
+}
 ```
 
-### API 文檔
-- Swagger UI: http://localhost:8000/docs
-- OpenAPI Schema: http://localhost:8000/schema
+URL Filter Examples:
+- `/article` - All article pages
+- `/tag` - All tag pages
+- `/news/` - News section
+- `/category/tech` - Specific category
 
-## 🔧 API 測試
-
-### 健康檢查
+### Download as CSV
 ```bash
-curl -s http://localhost:8000/health | jq .
+GET /api/v1/page-keyword-performance/csv?hostname=example.com&days=30&query=/article
 ```
 
-### 查看所有站點
+## Sync Management
+
+### Check Sync Status
 ```bash
-curl -s http://localhost:8000/api/v1/sites | jq .
+GET /api/v1/sync/status?hostname=example.com&days=30
 ```
 
-### 獲取站點排名數據
+### Trigger Sync (Returns Job Info)
 ```bash
-curl -s -X POST http://localhost:8000/api/v1/analytics/ranking-data \
-  -H "Content-Type: application/json" \
-  -d '{
-    "site_id": 17,
-    "date_from": "2025-07-20",
-    "date_to": "2025-07-25",
-    "group_by": ["query"],
-    "limit": 10
-  }' | jq .
+POST /api/v1/sync/trigger
+{
+  "hostname": "example.com",    # or use site_id
+  "days": 30,
+  "sync_mode": "skip",          # or "overwrite"
+  "force": false
+}
 ```
 
-### 使用 hostname 查詢
+## CLI Commands
+
+### Daily Data Sync
 ```bash
-curl -s -X POST http://localhost:8000/api/v1/analytics/ranking-data \
-  -H "Content-Type: application/json" \
-  -d '{
-    "hostname": "urbanlifehk.com",
-    "date_from": "2025-07-20", 
-    "date_to": "2025-07-25",
-    "queries": ["美容", "護膚"],
-    "exact_match": false,
-    "group_by": ["query"]
-  }' | jq .
+# Single site
+just sync-site 1 7              # Site ID 1, last 7 days
+just sync-site 1 14 overwrite   # Overwrite mode
+
+# Multiple sites (sequential)
+just sync-multiple "1 3 5" 7
+just sync-multiple "1,3,5" 14 overwrite
+
+# Direct script
+poetry run python sync.py sync 1 7 skip
 ```
 
-### 觸發同步任務（API）
+### Hourly Data Sync (Max 10 days)
 ```bash
-# 基本同步觸發
-curl -s -X POST http://localhost:8000/api/v1/sync/trigger \
-  -H "Content-Type: application/json" \
-  -d '{
-    "site_id": 17,
-    "days": 7,
-    "sync_mode": "skip"
-  }' | jq .
+# Single site
+just sync-hourly 5 2            # Site ID 5, last 2 days
+just sync-hourly 5 7 overwrite  # Overwrite mode
 
-# 使用 hostname 和 overwrite 模式
-curl -s -X POST http://localhost:8000/api/v1/sync/trigger \
-  -H "Content-Type: application/json" \
-  -d '{
-    "hostname": "urbanlifehk.com",
-    "days": 14,
-    "sync_mode": "overwrite",
-    "force": true
-  }' | jq .
+# Multiple sites
+just sync-hourly-multiple "1 3 5" 2
+just sync-hourly-multiple "4,5,11,16" 1
+
+# Direct script
+poetry run python sync_hourly.py sync 5 2
 ```
 
-### 下載 CSV 數據
+### Site Management
 ```bash
-# 頁面關鍵字效果數據
-curl -s "http://localhost:8000/api/v1/page-keyword-performance/csv/?site_id=17&days=30" \
-  -o performance_data.csv
+# List sites
+just site-list
 
-# 使用 hostname
-curl -s "http://localhost:8000/api/v1/page-keyword-performance/csv/?hostname=urbanlifehk.com&days=30" \
-  -o performance_data.csv
+# Check sync status
+just sync-status        # All sites
+just sync-status 5      # Specific site
 ```
 
-### 查看同步狀態
+### Quality Checks
 ```bash
-# 使用 site_id
-curl -s "http://localhost:8000/api/v1/sync/status?site_id=17&days=30" | jq .
-
-# 使用 hostname
-curl -s "http://localhost:8000/api/v1/sync/status?hostname=urbanlifehk.com&days=30" | jq .
+just check              # All checks (lint, type, test)
+just lint               # Code formatting
+just type-check         # Type checking
+just test               # Run tests
 ```
 
-## 🧪 測試和診斷
+## Common Patterns
 
-### 運行 API 負載測試
-```bash
-poetry run python load_test.py
+### Using Hostname vs Site ID
+Both are supported for most endpoints:
+```javascript
+// Using hostname (recommended for UX)
+{ "hostname": "example.com", ... }
+
+// Using site_id (faster if known)
+{ "site_id": 1, ... }
 ```
 
-### 運行 API 壓力測試
-```bash
-poetry run python stress_test.py
+### Date Ranges
+```javascript
+// Specific dates
+{
+  "date_from": "2025-01-01",
+  "date_to": "2025-01-31"
+}
+
+// Or days from today
+{ "days": 30 }
 ```
 
-### 測試 GSC API 並發限制
-```bash
-poetry run python test_gsc_limits.py
-poetry run python test_real_gsc_auth.py
+### Error Responses
+```javascript
+// 400 Bad Request
+{
+  "detail": "Either site_id or hostname must be provided"
+}
+
+// 404 Not Found
+{
+  "detail": "Site not found: example.com"
+}
+
+// 500 Internal Server Error
+{
+  "detail": "Database error: ..."
+}
 ```
 
-### 數據庫查詢
-```bash
-# 檢查特定站點的記錄數
-sqlite3 data/gsc_data.db "SELECT COUNT(*) FROM gsc_performance_data WHERE site_id = 17;"
+## Frontend Integration
 
-# 查看最近的數據
-sqlite3 data/gsc_data.db "SELECT date, COUNT(*) as records FROM gsc_performance_data WHERE site_id = 17 GROUP BY date ORDER BY date DESC LIMIT 10;"
+### Basic Fetch Example
+```javascript
+// Get sites
+const response = await fetch('http://localhost:8000/api/v1/sites');
+const sites = await response.json();
 
-# 查看同步覆蓋範圍
-sqlite3 data/gsc_data.db "SELECT DISTINCT date FROM gsc_performance_data WHERE site_id = 17 ORDER BY date DESC;"
+// Search queries
+const data = await fetch('http://localhost:8000/api/v1/analytics/ranking-data', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    hostname: "example.com",
+    date_from: "2025-01-01",
+    date_to: "2025-01-31",
+    queries: ["keyword"],
+    exact_match: false
+  })
+});
 ```
 
-## 🛠️ 開發工作流程
-
-### 代碼質量檢查
-```bash
-# 格式化代碼
-poetry run ruff check . --fix
-poetry run ruff format .
-
-# 類型檢查
-poetry run mypy src/
-
-# 運行測試
-poetry run pytest
+### Download CSV
+```javascript
+// Trigger download
+window.location.href = `http://localhost:8000/api/v1/page-keyword-performance/csv?hostname=${hostname}&days=30&query=/article`;
 ```
 
-### 常見站點 ID
-根據你的 `just site-list` 輸出：
-- `1`: businessfocus.io
-- `2`: mamidaily.com
-- `17`: urbanlifehk.com
-- `7`: petcutecute.com
-- `8`: topbeautyhk.com
+## Tips
 
-## ⚠️ 重要提醒
+1. **Sequential Processing**: GSC API requires sequential requests. Never use concurrent sync.
+2. **URL Filtering**: Use `query` parameter to filter by URL patterns in performance endpoints
+3. **Resume Capability**: Daily and hourly syncs support resume from interruption
+4. **Data Delay**: GSC data typically has 2-3 day processing delay
+5. **Hourly Limit**: Hourly data only available for last 10 days
 
-1. **GSC API 限制**：
-   - 不支持並發請求（會導致 100% 失敗率）
-   - 必須使用順序同步
-   - 建議請求間隔 200-500ms
+## Environment Variables
 
-2. **同步模式選擇**：
-   - 日常更新使用 `skip` 模式
-   - 數據修正使用 `overwrite` 模式
-   - Overwrite 模式會覆蓋現有數據，請謹慎使用
+```bash
+# Override config values
+export GSC__PATHS__DATABASE=/custom/path/gsc.db
+export GSC__SYNC__BATCH_SIZE=1000
+export GSC__LOG__LEVEL=DEBUG
+```
 
-3. **性能考量**：
-   - API 查詢支持高並發（測試達 808 RPS）
-   - 數據同步必須順序執行
-   - 大量數據同步建議分批進行
+## Health Check
 
-## 🔗 相關文件
+```bash
+GET /health
 
-- `README.md`: 項目完整說明
-- `CLAUDE.md`: Claude Code 專用指引
-- `justfile`: Just 工具的任務定義
-- API 文檔: http://localhost:8000/docs （需要先啟動服務）
+# Response
+{
+  "status": "healthy",
+  "timestamp": "2025-01-24T12:00:00Z",
+  "database": {
+    "connected": true,
+    "sites_count": 5
+  }
+}
+```

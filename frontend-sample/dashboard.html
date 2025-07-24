@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GSC Dashboard - Advanced React Example</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
+
+    <!-- Axios for API calls -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const { format, subDays, startOfDay } = dateFns;
+
+        // API Configuration
+        const API_BASE_URL = 'http://localhost:8000';
+
+        // Chart Component
+        const TrendChart = ({ data, title }) => {
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            useEffect(() => {
+                if (!data || data.length === 0) return;
+
+                const ctx = chartRef.current.getContext('2d');
+
+                if (chartInstance.current) {
+                    chartInstance.current.destroy();
+                }
+
+                chartInstance.current = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.map(d => format(new Date(d.date), 'MMM dd')),
+                        datasets: [
+                            {
+                                label: 'Clicks',
+                                data: data.map(d => d.total_clicks),
+                                borderColor: 'rgb(59, 130, 246)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                tension: 0.1
+                            },
+                            {
+                                label: 'Impressions',
+                                data: data.map(d => d.total_impressions),
+                                borderColor: 'rgb(16, 185, 129)',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                tension: 0.1,
+                                yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: title
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Clicks'
+                                }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Impressions'
+                                },
+                                grid: {
+                                    drawOnChartArea: false
+                                }
+                            }
+                        }
+                    }
+                });
+
+                return () => {
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+                };
+            }, [data, title]);
+
+            return <canvas ref={chartRef} className="w-full h-64"></canvas>;
+        };
+
+        // Main Dashboard Component
+        const Dashboard = () => {
+            const [sites, setSites] = useState([]);
+            const [selectedSite, setSelectedSite] = useState('');
+            const [performanceData, setPerformanceData] = useState(null);
+            const [topQueries, setTopQueries] = useState([]);
+            const [topPages, setTopPages] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [dateRange, setDateRange] = useState(30);
+            const [error, setError] = useState(null);
+
+            // Fetch sites on mount
+            useEffect(() => {
+                fetchSites();
+            }, []);
+
+            // Fetch data when site or date range changes
+            useEffect(() => {
+                if (selectedSite) {
+                    fetchDashboardData();
+                }
+            }, [selectedSite, dateRange]);
+
+            const fetchSites = async () => {
+                try {
+                    const response = await axios.get(`${API_BASE_URL}/api/v1/sites`);
+                    setSites(response.data);
+                    if (response.data.length > 0 && !selectedSite) {
+                        setSelectedSite(response.data[0].domain);
+                    }
+                } catch (err) {
+                    setError('Failed to fetch sites');
+                    console.error(err);
+                }
+            };
+
+            const fetchDashboardData = async () => {
+                setLoading(true);
+                setError(null);
+
+                try {
+                    // Fetch multiple data points in parallel
+                    const [trendsRes, queriesRes, pagesRes] = await Promise.all([
+                        // Performance trends
+                        axios.get(`${API_BASE_URL}/api/v1/analytics/performance-trends`, {
+                            params: { hostname: selectedSite, days: dateRange }
+                        }),
+                        // Top queries
+                        axios.post(`${API_BASE_URL}/api/v1/analytics/ranking-data`, {
+                            hostname: selectedSite,
+                            date_from: format(subDays(new Date(), dateRange), 'yyyy-MM-dd'),
+                            date_to: format(new Date(), 'yyyy-MM-dd'),
+                            group_by: ['query'],
+                            limit: 10
+                        }),
+                        // Top pages
+                        axios.post(`${API_BASE_URL}/api/v1/page-keyword-performance/`, {
+                            hostname: selectedSite,
+                            days: dateRange
+                        })
+                    ]);
+
+                    setPerformanceData(trendsRes.data);
+                    setTopQueries(queriesRes.data.data || []);
+                    setTopPages(pagesRes.data.data || []);
+                } catch (err) {
+                    setError('Failed to fetch dashboard data');
+                    console.error(err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const exportData = (data, filename) => {
+                const json = JSON.stringify(data, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${filename}_${Date.now()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-100">
+                    {/* Header */}
+                    <div className="bg-white shadow-sm border-b">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between items-center py-6">
+                                <h1 className="text-2xl font-bold text-gray-900">GSC Dashboard</h1>
+                                <div className="flex items-center space-x-4">
+                                    <select
+                                        value={selectedSite}
+                                        onChange={(e) => setSelectedSite(e.target.value)}
+                                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        {sites.map(site => (
+                                            <option key={site.id} value={site.domain}>
+                                                {site.name}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    <select
+                                        value={dateRange}
+                                        onChange={(e) => setDateRange(Number(e.target.value))}
+                                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value={7}>Last 7 days</option>
+                                        <option value={14}>Last 14 days</option>
+                                        <option value={30}>Last 30 days</option>
+                                        <option value={90}>Last 90 days</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Error Alert */}
+                    {error && (
+                        <div className="max-w-7xl mx-auto px-4 mt-4">
+                            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                                {error}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Main Content */}
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        {loading ? (
+                            <div className="flex justify-center items-center h-64">
+                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Summary Cards */}
+                                {performanceData && (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                        <div className="bg-white rounded-lg shadow p-6">
+                                            <h3 className="text-sm font-medium text-gray-500">Total Clicks</h3>
+                                            <p className="text-3xl font-bold text-gray-900 mt-2">
+                                                {performanceData.summary.total_clicks.toLocaleString()}
+                                            </p>
+                                        </div>
+                                        <div className="bg-white rounded-lg shadow p-6">
+                                            <h3 className="text-sm font-medium text-gray-500">Avg Position</h3>
+                                            <p className="text-3xl font-bold text-gray-900 mt-2">
+                                                {performanceData.summary.avg_position.toFixed(1)}
+                                            </p>
+                                        </div>
+                                        <div className="bg-white rounded-lg shadow p-6">
+                                            <h3 className="text-sm font-medium text-gray-500">Unique Queries</h3>
+                                            <p className="text-3xl font-bold text-gray-900 mt-2">
+                                                {performanceData.summary.unique_queries.toLocaleString()}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Performance Chart */}
+                                {performanceData && (
+                                    <div className="bg-white rounded-lg shadow p-6 mb-8">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h2 className="text-lg font-semibold">Performance Trends</h2>
+                                            <button
+                                                onClick={() => exportData(performanceData.data, 'performance_trends')}
+                                                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                                            >
+                                                Export Data
+                                            </button>
+                                        </div>
+                                        <TrendChart
+                                            data={performanceData.data}
+                                            title="Clicks & Impressions Trend"
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Top Queries and Pages */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    {/* Top Queries */}
+                                    <div className="bg-white rounded-lg shadow p-6">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h2 className="text-lg font-semibold">Top Queries</h2>
+                                            <button
+                                                onClick={() => exportData(topQueries, 'top_queries')}
+                                                className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm"
+                                            >
+                                                Export
+                                            </button>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-full">
+                                                <thead>
+                                                    <tr className="border-b text-left text-sm font-medium text-gray-500">
+                                                        <th className="pb-2">Query</th>
+                                                        <th className="pb-2 text-right">Clicks</th>
+                                                        <th className="pb-2 text-right">Position</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="text-sm">
+                                                    {topQueries.map((query, index) => (
+                                                        <tr key={index} className="border-b">
+                                                            <td className="py-2">{query.query}</td>
+                                                            <td className="py-2 text-right">{query.clicks.toLocaleString()}</td>
+                                                            <td className="py-2 text-right">{query.position.toFixed(1)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* Top Pages */}
+                                    <div className="bg-white rounded-lg shadow p-6">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h2 className="text-lg font-semibold">Top Pages</h2>
+                                            <button
+                                                onClick={() => exportData(topPages, 'top_pages')}
+                                                className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm"
+                                            >
+                                                Export
+                                            </button>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-full">
+                                                <thead>
+                                                    <tr className="border-b text-left text-sm font-medium text-gray-500">
+                                                        <th className="pb-2">URL</th>
+                                                        <th className="pb-2 text-right">Clicks</th>
+                                                        <th className="pb-2 text-right">Keywords</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="text-sm">
+                                                    {topPages.slice(0, 10).map((page, index) => (
+                                                        <tr key={index} className="border-b">
+                                                            <td className="py-2 max-w-xs truncate" title={page.url}>
+                                                                {page.url.replace(/^https?:\/\/[^\/]+/, '')}
+                                                            </td>
+                                                            <td className="py-2 text-right">{page.total_clicks.toLocaleString()}</td>
+                                                            <td className="py-2 text-right">{page.keyword_count}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // Render the app
+        ReactDOM.render(<Dashboard />, document.getElementById('root'));
+    </script>
+</body>
+</html>

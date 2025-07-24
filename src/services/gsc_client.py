@@ -161,17 +161,19 @@ class ModernGSCClient:
         self,
         site_url: str,
         target_date: date,
-        row_limit: int = 25000
+        row_limit: int = 25000,
+        start_row: int = 0
     ) -> list[PerformanceData]:
-        """Fetch performance data for a specific date."""
+        """Fetch performance data for a specific date with pagination support."""
         url = f"{API_BASE_URL}/sites/{quote(site_url, safe=':')}/searchAnalytics/query"
         
-        # Build request body
+        # Build request body with pagination support
         body = {
             "startDate": target_date.strftime("%Y-%m-%d"),
             "endDate": target_date.strftime("%Y-%m-%d"),
             "dimensions": ["query", "page", "device"],  # Removed "searchType" - causes 400 error
             "rowLimit": row_limit,
+            "startRow": start_row,  # Add pagination support
             "dataState": "final"
         }
         

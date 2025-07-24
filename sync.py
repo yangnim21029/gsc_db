@@ -52,6 +52,7 @@ async def sync_site_data(site_id: int, days: int = 7, sync_mode: str = "skip"):
                 print(f"  Fetching data for {current_date}...")
                 
                 # Fetch data in batches to handle API limits
+                # Reset start_row for each new date
                 start_row = 0
                 batch_size = 25000
                 
@@ -60,7 +61,8 @@ async def sync_site_data(site_id: int, days: int = 7, sync_mode: str = "skip"):
                         daily_data = await client.fetch_data_for_date(
                             site_url=site.domain,
                             target_date=current_date,
-                            row_limit=batch_size
+                            row_limit=batch_size,
+                            start_row=start_row  # Add start_row parameter for pagination
                         )
                         
                         if not daily_data:
@@ -70,7 +72,7 @@ async def sync_site_data(site_id: int, days: int = 7, sync_mode: str = "skip"):
                         performance_records.extend(daily_data)
                         print(f"    Fetched {len(daily_data)} records (total: {len(performance_records)})")
                         
-                        # If we got less than the batch size, we're done
+                        # If we got less than the batch size, we're done with this date
                         if len(daily_data) < batch_size:
                             break
                             

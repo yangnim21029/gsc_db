@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GSC Dashboard - Advanced React Example</title>
-    
-    <!-- 
+
+    <!--
         PERFORMANCE NOTE: This dashboard now supports:
         - URL filtering to focus on specific page types
         - Adjustable result limits for better performance
@@ -22,8 +22,7 @@
     <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <!-- Removed heavy Chart.js - using lightweight SVG charts instead -->
 
     <!-- Axios for API calls -->
     <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
@@ -55,89 +54,117 @@
             return d;
         };
 
-        // Chart Component
+        // Lightweight SVG Chart Component
         const TrendChart = ({ data, title }) => {
-            const chartRef = useRef(null);
-            const chartInstance = useRef(null);
+            if (!data || data.length === 0) return null;
 
-            useEffect(() => {
-                if (!data || data.length === 0) return;
+            const width = 800;
+            const height = 300;
+            const padding = { top: 20, right: 60, bottom: 40, left: 60 };
+            const chartWidth = width - padding.left - padding.right;
+            const chartHeight = height - padding.top - padding.bottom;
 
-                const ctx = chartRef.current.getContext('2d');
+            // Calculate scales
+            const maxClicks = Math.max(...data.map(d => d.total_clicks));
+            const maxImpressions = Math.max(...data.map(d => d.total_impressions));
 
-                if (chartInstance.current) {
-                    chartInstance.current.destroy();
-                }
+            const xScale = (index) => (index / (data.length - 1)) * chartWidth + padding.left;
+            const yScaleClicks = (value) => chartHeight - (value / maxClicks) * chartHeight + padding.top;
+            const yScaleImpressions = (value) => chartHeight - (value / maxImpressions) * chartHeight + padding.top;
 
-                chartInstance.current = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: data.map(d => formatDate(new Date(d.date), 'MMM dd')),
-                        datasets: [
-                            {
-                                label: 'Clicks',
-                                data: data.map(d => d.total_clicks),
-                                borderColor: 'rgb(59, 130, 246)',
-                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                                tension: 0.1
-                            },
-                            {
-                                label: 'Impressions',
-                                data: data.map(d => d.total_impressions),
-                                borderColor: 'rgb(16, 185, 129)',
-                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                                tension: 0.1,
-                                yAxisID: 'y1'
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            title: {
-                                display: true,
-                                text: title
-                            },
-                            tooltip: {
-                                mode: 'index',
-                                intersect: false
-                            }
-                        },
-                        scales: {
-                            y: {
-                                type: 'linear',
-                                display: true,
-                                position: 'left',
-                                title: {
-                                    display: true,
-                                    text: 'Clicks'
-                                }
-                            },
-                            y1: {
-                                type: 'linear',
-                                display: true,
-                                position: 'right',
-                                title: {
-                                    display: true,
-                                    text: 'Impressions'
-                                },
-                                grid: {
-                                    drawOnChartArea: false
-                                }
-                            }
-                        }
-                    }
-                });
+            // Create path data
+            const clicksPath = data.map((d, i) =>
+                `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${yScaleClicks(d.total_clicks)}`
+            ).join(' ');
 
-                return () => {
-                    if (chartInstance.current) {
-                        chartInstance.current.destroy();
-                    }
-                };
-            }, [data, title]);
+            const impressionsPath = data.map((d, i) =>
+                `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${yScaleImpressions(d.total_impressions)}`
+            ).join(' ');
 
-            return <canvas ref={chartRef} className="w-full h-64"></canvas>;
+            return (
+                <div className="w-full overflow-x-auto">
+                    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-64">
+                        {/* Title */}
+                        <text x={width / 2} y={15} textAnchor="middle" className="text-sm font-medium fill-gray-700">
+                            {title}
+                        </text>
+
+                        {/* Grid lines */}
+                        {[0, 0.25, 0.5, 0.75, 1].map(tick => (
+                            <line
+                                key={tick}
+                                x1={padding.left}
+                                y1={chartHeight - tick * chartHeight + padding.top}
+                                x2={width - padding.right}
+                                y2={chartHeight - tick * chartHeight + padding.top}
+                                stroke="#e5e7eb"
+                                strokeDasharray="2,2"
+                            />
+                        ))}
+
+                        {/* Clicks line */}
+                        <path
+                            d={clicksPath}
+                            fill="none"
+                            stroke="rgb(59, 130, 246)"
+                            strokeWidth="2"
+                        />
+
+                        {/* Impressions line */}
+                        <path
+                            d={impressionsPath}
+                            fill="none"
+                            stroke="rgb(16, 185, 129)"
+                            strokeWidth="2"
+                        />
+
+                        {/* Data points */}
+                        {data.map((d, i) => (
+                            <g key={i}>
+                                <circle
+                                    cx={xScale(i)}
+                                    cy={yScaleClicks(d.total_clicks)}
+                                    r="3"
+                                    fill="rgb(59, 130, 246)"
+                                />
+                                <circle
+                                    cx={xScale(i)}
+                                    cy={yScaleImpressions(d.total_impressions)}
+                                    r="3"
+                                    fill="rgb(16, 185, 129)"
+                                />
+                            </g>
+                        ))}
+
+                        {/* X-axis labels */}
+                        {data.filter((_, i) => i % Math.ceil(data.length / 6) === 0).map((d, i, arr) => (
+                            <text
+                                key={i}
+                                x={xScale(data.indexOf(d))}
+                                y={height - 10}
+                                textAnchor="middle"
+                                className="text-xs fill-gray-600"
+                            >
+                                {formatDate(new Date(d.date), 'MMM dd')}
+                            </text>
+                        ))}
+
+                        {/* Y-axis labels */}
+                        <text x={15} y={padding.top} className="text-xs fill-gray-600">{maxClicks}</text>
+                        <text x={15} y={height - padding.bottom} className="text-xs fill-gray-600">0</text>
+                        <text x={width - 15} y={padding.top} textAnchor="end" className="text-xs fill-gray-600">{maxImpressions}</text>
+
+                        {/* Legend */}
+                        <g transform={`translate(${width / 2 - 100}, ${height - 5})`}>
+                            <line x1="0" y1="0" x2="20" y2="0" stroke="rgb(59, 130, 246)" strokeWidth="2" />
+                            <text x="25" y="4" className="text-xs fill-gray-600">Clicks</text>
+
+                            <line x1="80" y1="0" x2="100" y2="0" stroke="rgb(16, 185, 129)" strokeWidth="2" />
+                            <text x="105" y="4" className="text-xs fill-gray-600">Impressions</text>
+                        </g>
+                    </svg>
+                </div>
+            );
         };
 
         // Main Dashboard Component
@@ -173,7 +200,7 @@
 
             const fetchDashboardData = async () => {
                 if (!selectedSite || loading) return; // Prevent concurrent requests
-                
+
                 setLoading(true);
                 setError(null);
 
@@ -231,9 +258,9 @@
                     <div className="bg-white shadow-sm border-b">
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                             <h1 className="text-2xl font-bold text-gray-900 mb-4">GSC Dashboard</h1>
-                            
+
                             {/* Form Controls */}
-                            <form onSubmit={(e) => { e.preventDefault(); fetchDashboardData(); }} 
+                            <form onSubmit={(e) => { e.preventDefault(); fetchDashboardData(); }}
                                   className="flex flex-wrap items-end gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Site</label>

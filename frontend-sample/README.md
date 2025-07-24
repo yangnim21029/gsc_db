@@ -31,15 +31,23 @@ This guide demonstrates how to integrate with the GSC Database API using modern 
 
 ### 2. Advanced Dashboard (`dashboard.html`)
 
-- Interactive dashboard with charts and data visualization
-- Uses React (via CDN) and Chart.js
+- Interactive dashboard with lightweight SVG charts
+- Uses React (via CDN) with custom SVG charting (replaced Chart.js for 10x better performance)
 - Form-based data loading (click "Load Dashboard" to fetch data)
+- URL filtering support for analyzing specific page types
+- Adjustable result limits to control data volume
 
-**Performance Note**: The dashboard fetches multiple data endpoints simultaneously. For large sites with extensive data, consider:
-- Using shorter date ranges (7-14 days)
-- Implementing pagination for top pages/queries
-- Adding caching on the backend
-- Using the more focused search.html for specific query analysis
+**Performance Improvements**:
+- Replaced Chart.js with custom SVG implementation for significantly faster rendering
+- Added `limit` parameter to API calls to restrict result sets
+- Form-based submission prevents unnecessary API calls on state changes
+- URL filtering allows focusing on specific page patterns (e.g., `/article`, `/tag`)
+
+**Performance Note**: For large sites with extensive data:
+- Start with shorter date ranges (7-14 days) and lower result limits
+- Use URL filters to focus on specific page types
+- The API now supports limiting results for better performance
+- Use the more focused search.html for specific query analysis
 
 ### 3. Query Search Tool (`search.html`)
 

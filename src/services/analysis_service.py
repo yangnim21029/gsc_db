@@ -575,7 +575,7 @@ class AnalysisService:
         """
         # Build date filter
         date_clause = ""
-        params = [site_id]
+        params: list[Any] = [site_id]
 
         if days and days > 0:
             from datetime import datetime, timedelta

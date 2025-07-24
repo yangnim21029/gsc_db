@@ -4,6 +4,8 @@ Analytics Router
 API endpoints for data analysis and reporting.
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.services.analysis_service import AnalysisService
@@ -83,7 +85,7 @@ def get_ranking_data(
 
     # If hostname is provided, resolve it to site_id
     if request.hostname and not request.site_id:
-        site = site_service.get_site_by_host(request.hostname)
+        site = site_service.get_site_by_hostname(request.hostname)
         if not site:
             raise HTTPException(status_code=404, detail=f"Site not found: {request.hostname}")
         site_id = site["id"]
@@ -130,7 +132,7 @@ def get_ranking_data(
         # Aggregate data by day (similar to daily-data endpoint)
         from collections import defaultdict
 
-        daily_aggregated = defaultdict(
+        daily_aggregated: defaultdict[tuple[str, Any], dict[str, Any]] = defaultdict(
             lambda: {"clicks": 0, "impressions": 0, "positions": [], "ctrs": []}
         )
 
@@ -180,19 +182,28 @@ def get_ranking_data(
             result_data = result_data[: request.max_results]
 
     # Prepare response metadata
-    site_info = site_service.db.get_site_by_id(site_id)
     total_results = len(result_data)
+
+    # Convert result_data to RankingDataItem objects
+    ranking_items = []
+    for item in result_data:
+        ranking_items.append(
+            schemas.RankingDataItem(
+                date=item["date"],
+                query=item.get("query"),
+                page=item.get("page"),
+                clicks=item["clicks"],
+                impressions=item["impressions"],
+                ctr=item["ctr"],
+                position=item["position"],
+            )
+        )
 
     return schemas.RankingDataResponse(
         site_id=site_id,
-        site_name=site_info["name"] if site_info else None,
-        date_range=f"{request.start_date} to {request.end_date}",
+        start_date=request.start_date,
+        end_date=request.end_date,
         group_by=request.group_by,
-        aggregation_mode=request.aggregation_mode,
-        filters_applied={
-            "queries": request.queries if request.queries else None,
-            "pages": request.pages if request.pages else None,
-        },
         total_results=total_results,
-        data=result_data,
+        data=ranking_items,
     )

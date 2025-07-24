@@ -29,7 +29,7 @@ repos:
     hooks:
       - id: type-check
         name: Run type-checking only
-        entry: just type-check
+        entry: /opt/homebrew/bin/just type-check
         language: system
         types: [python]
         pass_filenames: false

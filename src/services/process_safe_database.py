@@ -12,6 +12,7 @@ import logging
 import os
 import sqlite3
 import threading
+from typing import Optional
 
 from .database import Database
 
@@ -35,8 +36,10 @@ class ProcessSafeDatabase:
         """
         self._database_path = database_path
         self._lock = threading.RLock()
-        self._connections = {}  # Maps process ID to (connection, Database instance)
-        self._current_pid = None
+        self._connections: dict[
+            int, tuple[sqlite3.Connection, Database]
+        ] = {}  # Maps process ID to (connection, Database instance)
+        self._current_pid: Optional[int] = None
 
     def _create_connection(self) -> sqlite3.Connection:
         """Create a new database connection with proper settings."""

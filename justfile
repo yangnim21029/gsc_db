@@ -142,7 +142,7 @@ test-parallel:
 # # 執行 mypy 類型檢查器。
 type-check:
     @echo "🔍 正在執行 mypy 類型檢查..."
-    # @poetry run mypy .
+    @/Users/rose/Library/Python/3.9/bin/poetry run mypy .
 
 # --- 工具與危險任務 ---
 

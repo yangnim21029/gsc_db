@@ -11,7 +11,6 @@ import typer
 from src.cli import commands
 from src.config import setup_logging
 from src.containers import Container
-from src.web import api as web_api
 
 # 1. 建立主 Typer 應用程式
 app = typer.Typer(
@@ -23,8 +22,7 @@ app = typer.Typer(
 # 注意：這個 container 實例主要用於 @app.callback 中進行初始化。
 # 命令本身應該從 ctx.obj 中獲取容器，以確保在測試中可以被替換。
 container = Container()
-# 將 web_api 的容器指向同一個，以共享服務實例
-web_api.container = container
+# Web API 已經有自己的容器實例在 dependencies 中
 
 
 @app.callback(invoke_without_command=True)

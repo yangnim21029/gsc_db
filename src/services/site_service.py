@@ -139,6 +139,18 @@ class SiteService:
 
         return None
 
+    def get_site_by_hostname(self, hostname: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a site by its hostname (alias for get_site_by_domain).
+
+        Args:
+            hostname: The hostname to search for
+
+        Returns:
+            A dictionary representing the site, or None if not found.
+        """
+        return self.get_site_by_domain(hostname)
+
     def add_site(
         self, domain: str, name: Optional[str] = None, category: Optional[str] = None
     ) -> Optional[int]:

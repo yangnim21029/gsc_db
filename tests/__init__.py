@@ -1,0 +1,1 @@
+"""GSC Database Manager test suite."""

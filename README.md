@@ -401,10 +401,10 @@ just test        # pytest 測試套件
 just check
 
 # 執行性能測試
-poetry run python load_test.py
+poetry run python tests/performance/load_test.py
 
 # 清理測試數據
-poetry run python clean_test_data.py
+poetry run python tests/clean_test_data.py
 ```
 
 ## ⚠️ 測試數據管理
@@ -417,13 +417,13 @@ poetry run python clean_test_data.py
 ### 清理測試數據
 ```bash
 # 清理最近 7 天的測試數據
-python clean_test_data.py --site-id 3 --days 7
+python tests/clean_test_data.py --site-id 3 --days 7
 
 # 清理所有測試數據（謹慎使用）
-python clean_test_data.py --site-id 3 --all
+python tests/clean_test_data.py --site-id 3 --all
 
 # 清理未來日期的數據（可能是測試數據）
-python clean_test_data.py --future
+python tests/clean_test_data.py --future
 ```
 
 ## 📊 效能基準

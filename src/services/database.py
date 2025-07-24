@@ -44,6 +44,13 @@ class Database:
         """初始化數據庫，創建所有必要的表。線程安全。"""
         with self._lock:
             cursor = self._connection.cursor()
+
+            # 啟用 WAL 模式以支援更好的並發存取
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA busy_timeout=30000")  # 30 秒超時
+            cursor.execute("PRAGMA cache_size=-64000")  # 64MB 快取
+
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS sites (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,

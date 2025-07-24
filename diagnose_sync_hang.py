@@ -36,15 +36,16 @@ def main():
     try:
         # 1. 導入必要模組
         logger.info("步驟 1: 導入模組...")
-        # 直接導入需要的服務，避免導入會載入 matplotlib 的 Container
-        from src.services.database import Database
+        # 使用 ProcessSafeDatabase 來正確初始化
         from src.services.gsc_client import GSCClient
+        from src.services.process_safe_database import ProcessSafeDatabase
 
         logger.info("✓ 模組導入成功")
 
-        # 2. 直接初始化服務（避免使用 Container）
+        # 2. 使用 ProcessSafeDatabase 初始化服務
         logger.info("步驟 2: 初始化服務...")
-        db = Database()
+        process_safe_db = ProcessSafeDatabase()
+        db = process_safe_db.get_database()
         gsc_client = GSCClient(db)
         logger.info("✓ 服務初始化成功")
 

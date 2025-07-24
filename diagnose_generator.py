@@ -31,12 +31,13 @@ def main():
     logger.info("=== 深入診斷 stream_site_data 生成器問題 ===")
 
     try:
-        # 直接導入需要的服務
-        from src.services.database import Database
+        # 使用 ProcessSafeDatabase 來正確初始化
         from src.services.gsc_client import GSCClient
+        from src.services.process_safe_database import ProcessSafeDatabase
 
         # 初始化服務
-        db = Database()
+        process_safe_db = ProcessSafeDatabase()
+        db = process_safe_db.get_database()
         gsc_client = GSCClient(db)
 
         # 獲取站點

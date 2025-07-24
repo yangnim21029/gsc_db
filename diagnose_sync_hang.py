@@ -118,14 +118,17 @@ def main():
             traceback.print_exc()
 
         # 7. 測試原始 API 調用
-        logger.info("步驟 7: 測試原始 get_search_analytics...")
-        try:
-            data = gsc_client.get_search_analytics(
-                site["domain"], test_date, test_date, row_limit=10
-            )
-            logger.info(f"✓ API 調用成功，返回 {len(data) if data else 0} 筆數據")
-        except Exception as e:
-            logger.error(f"API 調用失敗: {e}")
+        logger.info("步驟 7: 測試是否有 get_search_analytics 方法...")
+        if hasattr(gsc_client, "get_search_analytics"):
+            try:
+                data = gsc_client.get_search_analytics(
+                    site["domain"], test_date, test_date, row_limit=10
+                )
+                logger.info(f"✓ API 調用成功，返回 {len(data) if data else 0} 筆數據")
+            except Exception as e:
+                logger.error(f"API 調用失敗: {e}")
+        else:
+            logger.warning("GSCClient 沒有 get_search_analytics 方法，跳過此測試")
 
     except Exception as e:
         logger.error(f"診斷過程出錯: {e}")

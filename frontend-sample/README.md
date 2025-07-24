@@ -74,6 +74,11 @@ For local development, you may need to handle CORS. The API server includes CORS
 - **Advanced Stack**: React/Vue + Chart.js + Tailwind CSS
 - **No build tools required** - Everything loads from CDN
 
+**Note**: These examples use CDN versions of libraries for simplicity. For production use:
+- Use PostCSS or Tailwind CLI instead of the CDN version
+- Bundle and minify JavaScript dependencies
+- Implement proper error boundaries and loading states
+
 ## Tips for Frontend Developers
 
 1. **Use site hostname instead of site_id** when possible for better UX

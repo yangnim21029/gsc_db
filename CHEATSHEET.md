@@ -78,14 +78,19 @@ POST /api/v1/page-keyword-performance/
 
 URL Filter Examples:
 - `/article` - All article pages
-- `/tag` - All tag pages
+- `/tag` - All tag pages  
 - `/news/` - News section
 - `/category/tech` - Specific category
+- `/author/` - Author pages
+- `product-` - Pages containing "product-" in URL
+- `.html` - All HTML pages
 
 ### Download as CSV
 ```bash
 GET /api/v1/page-keyword-performance/csv?hostname=example.com&days=30&query=/article
 ```
+
+Note: The `query` parameter uses SQL LIKE pattern matching (`%pattern%`), so it will match any URL containing the specified string.
 
 ## Sync Management
 
@@ -215,12 +220,26 @@ const data = await fetch('http://localhost:8000/api/v1/analytics/ranking-data', 
     exact_match: false
   })
 });
+
+// Get page performance with URL filtering
+const articlePages = await fetch('http://localhost:8000/api/v1/page-keyword-performance/', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    hostname: "example.com",
+    days: 30,
+    query: "/article"  // Filter for article pages only
+  })
+});
 ```
 
 ### Download CSV
 ```javascript
-// Trigger download
+// Trigger download with URL filter
 window.location.href = `http://localhost:8000/api/v1/page-keyword-performance/csv?hostname=${hostname}&days=30&query=/article`;
+
+// Download all pages (no filter)
+window.location.href = `http://localhost:8000/api/v1/page-keyword-performance/csv?hostname=${hostname}&days=30`;
 ```
 
 ## Tips

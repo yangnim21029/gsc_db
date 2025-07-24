@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Test - Check Console</title>
+</head>
+<body>
+    <h1>Dashboard Test</h1>
+    <p>Open the browser console to see if there are any errors.</p>
+    <p>This tests the date utility functions:</p>
+    
+    <div id="test-output"></div>
+
+    <script>
+        // Date utility functions (same as in dashboard)
+        const formatDate = (date, formatStr) => {
+            const d = new Date(date);
+            if (formatStr === 'yyyy-MM-dd') {
+                return d.toISOString().split('T')[0];
+            }
+            if (formatStr === 'MMM dd') {
+                return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            }
+            return d.toLocaleDateString();
+        };
+
+        const subDays = (date, days) => {
+            const d = new Date(date);
+            d.setDate(d.getDate() - days);
+            return d;
+        };
+
+        // Test the functions
+        const now = new Date();
+        const tests = [
+            `Current date (yyyy-MM-dd): ${formatDate(now, 'yyyy-MM-dd')}`,
+            `Current date (MMM dd): ${formatDate(now, 'MMM dd')}`,
+            `30 days ago: ${formatDate(subDays(now, 30), 'yyyy-MM-dd')}`,
+            `7 days ago (MMM dd): ${formatDate(subDays(now, 7), 'MMM dd')}`
+        ];
+
+        document.getElementById('test-output').innerHTML = tests.map(t => `<p>${t}</p>`).join('');
+        
+        console.log('Date utility functions test completed successfully!');
+    </script>
+</body>
+</html>

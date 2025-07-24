@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GSC Dashboard - Advanced React Example</title>
+    
+    <!-- 
+        PERFORMANCE NOTE: This dashboard loads multiple data endpoints simultaneously.
+        For large sites, it may be slow with 30+ days of data.
+        Consider using search.html for more focused analysis.
+    -->
 
     <!-- Tailwind CSS (for development only - use PostCSS in production) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -183,10 +189,12 @@
                             group_by: ['query'],
                             limit: 10
                         }),
-                        // Top pages
+                        // Top pages - limit to 10 for performance
                         axios.post(`${API_BASE_URL}/api/v1/page-keyword-performance/`, {
                             hostname: selectedSite,
-                            days: dateRange
+                            days: dateRange,
+                            limit: 10,  // Only get top 10 pages for performance
+                            // query: '/article'  // Optional: filter by URL pattern like '/article', '/tag', etc.
                         })
                     ]);
 

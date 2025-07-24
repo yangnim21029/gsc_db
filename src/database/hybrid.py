@@ -494,7 +494,7 @@ class HybridDataStore:
         return results
 
     async def get_page_keyword_performance(
-        self, site_id: int, date_range: tuple[str, str] | None = None, url_filter: str | None = None
+        self, site_id: int, date_range: tuple[str, str] | None = None, url_filter: str | None = None, limit: int | None = None
     ) -> dict[str, Any]:
         """Get page-keyword performance data."""
         # Build query conditions
@@ -511,8 +511,8 @@ class HybridDataStore:
 
         where_clause = " AND ".join(where_conditions)
 
-        cursor = await self._sqlite_conn.execute(
-            f"""
+        # Build query with optional LIMIT
+        query = f"""
             SELECT
                 page as url,
                 SUM(clicks) as total_clicks,
@@ -525,9 +525,12 @@ class HybridDataStore:
             WHERE {where_clause}
             GROUP BY page
             ORDER BY total_impressions DESC
-            """,
-            params,
-        )
+            """
+        
+        if limit:
+            query += f" LIMIT {limit}"
+            
+        cursor = await self._sqlite_conn.execute(query, params)
 
         results = []
         async for row in cursor:

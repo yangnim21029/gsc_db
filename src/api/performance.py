@@ -44,7 +44,10 @@ async def get_page_keyword_performance(
         str_date_range = (date_range[0].isoformat(), date_range[1].isoformat())
 
     results = await db.get_page_keyword_performance(
-        site_id=site_id, date_range=str_date_range, url_filter=data.query
+        site_id=site_id, 
+        date_range=str_date_range, 
+        url_filter=data.query,
+        limit=data.limit  # Pass limit to database method
     )
 
     return PageKeywordPerformanceResponse(

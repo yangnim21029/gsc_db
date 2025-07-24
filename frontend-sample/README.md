@@ -33,7 +33,13 @@ This guide demonstrates how to integrate with the GSC Database API using modern 
 
 - Interactive dashboard with charts and data visualization
 - Uses React (via CDN) and Chart.js
-- Real-time data updates
+- Form-based data loading (click "Load Dashboard" to fetch data)
+
+**Performance Note**: The dashboard fetches multiple data endpoints simultaneously. For large sites with extensive data, consider:
+- Using shorter date ranges (7-14 days)
+- Implementing pagination for top pages/queries
+- Adding caching on the backend
+- Using the more focused search.html for specific query analysis
 
 ### 3. Query Search Tool (`search.html`)
 

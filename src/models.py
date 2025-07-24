@@ -163,6 +163,7 @@ class PageKeywordPerformanceRequest(msgspec.Struct, kw_only=True):
     hostname: str | None = None
     days: int | None = None
     query: str | None = None
+    limit: int | None = None  # Limit number of pages returned for performance
 
 
 class PageKeywordPerformanceData(msgspec.Struct, kw_only=True):

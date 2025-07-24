@@ -295,21 +295,48 @@ def run_sync(
         task_id = progress.add_task("[bold green]順序同步中...", total=len(tasks_to_run))
 
         # 順序處理每個任務，避免並行導致的 API 限制和 SSL 錯誤
-        for site, date in tasks_to_run:
+        for idx, (site, date) in enumerate(tasks_to_run):
+            # 更新任務描述，顯示當前正在處理的網站和日期
+            progress.update(
+                task_id,
+                description=f"[bold green]同步中... [cyan]{site['name']}[/cyan] - [yellow]{date}[/yellow]",
+            )
+
             try:
+                # 在控制台顯示即時狀態
+                console.print(
+                    f"[dim]開始同步:[/dim] {site['name']} ({site['domain']}) - {date}",
+                    highlight=False,
+                )
+
                 day_stats = _sync_single_day(db, client, site, date, sync_mode)
                 for key in total_stats:
                     if key in day_stats:
                         total_stats[key] += day_stats[key]
+
+                # 顯示本次同步結果
+                if day_stats.get("inserted", 0) > 0 or day_stats.get("updated", 0) > 0:
+                    console.print(
+                        f"  [green]✓[/green] 完成: 新增 {day_stats.get('inserted', 0)} 筆, "
+                        f"更新 {day_stats.get('updated', 0)} 筆",
+                        highlight=False,
+                    )
+                else:
+                    console.print("  [yellow]⚠[/yellow] 已存在或無數據", highlight=False)
+
             except RetryError as e:
                 logger.error(
                     f"同步失敗 [站點: {site['name']}, 日期: {date}]: "
                     f"多次嘗試後仍然失敗。最後一次錯誤: {e.last_attempt.exception()}"
                 )
+                console.print(
+                    f"  [red]✗[/red] 失敗: {str(e.last_attempt.exception())}", highlight=False
+                )
                 total_stats["failed"] += 1
             except Exception as exc:
                 logger.error(f"任務 {site['name']}-{date} 產生未預期的例外: {exc}")
                 logger.debug(traceback.format_exc())
+                console.print(f"  [red]✗[/red] 錯誤: {str(exc)}", highlight=False)
                 total_stats["failed"] += 1
 
             progress.update(task_id, advance=1)

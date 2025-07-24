@@ -62,9 +62,9 @@ async def run_concurrent_stress_test(concurrent_users: int) -> dict[str, Any]:
     """Run stress test with specified number of concurrent users."""
     print(f"\n🔥 Running stress test with {concurrent_users} concurrent users...")
 
-    # Test data for Urban Life
+    # Test data for test site
     test_payload = {
-        "site_id": 17,
+        "site_id": 3,  # Use test site instead of production site
         "date_from": "2025-07-23",
         "date_to": "2025-07-24",
         "group_by": ["query"],
@@ -158,7 +158,7 @@ async def run_concurrent_stress_test(concurrent_users: int) -> dict[str, Any]:
 async def run_scalability_test():
     """Test API scalability with increasing concurrent users."""
     print("🚀 Starting API Scalability Test")
-    print("Testing urbanlifehk.com ranking-data endpoint")
+    print("Testing test site ranking-data endpoint")
 
     # Test different concurrency levels
     concurrency_levels = [1, 5, 10, 20, 30, 50]
@@ -232,4 +232,10 @@ async def run_scalability_test():
 
 
 if __name__ == "__main__":
-    asyncio.run(run_scalability_test())
+    try:
+        asyncio.run(run_scalability_test())
+    finally:
+        # Clean up test data
+        print("\n🧹 Cleaning up test data...")
+        from src.utils.test_cleanup import cleanup_after_test
+        cleanup_after_test(site_id=3, recent_days=2)

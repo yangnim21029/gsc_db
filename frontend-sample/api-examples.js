@@ -1,6 +1,12 @@
 /**
  * GSC API JavaScript Examples
  * These examples show how to call the GSC API from frontend applications
+ * 
+ * IMPORTANT: Test Data Management
+ * - Use site_id: 3 (test.com) for testing, not production sites
+ * - Test data should be cleaned up after testing
+ * - Run `python clean_test_data.py` to remove test data
+ * - Avoid using production site IDs (e.g., 17 for urbanlifehk.com)
  */
 
 const API_BASE_URL = 'http://localhost:8000';

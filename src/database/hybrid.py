@@ -524,7 +524,7 @@ class HybridDataStore:
             FROM gsc_performance_data
             WHERE {where_clause}
             GROUP BY page
-            ORDER BY total_impressions DESC
+            ORDER BY total_clicks DESC
             """
         
         if limit:

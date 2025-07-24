@@ -358,3 +358,5 @@ just sync-site 17 7 # Test sync functionality
 - Sync modes: skip (default) for updates, overwrite for corrections
 - API supports both site_id and hostname parameters
 - Performance tested: 808 RPS peak, 100% sequential sync success rate
+- **IMPORTANT**: Always use site_id: 3 (test.com) for testing, never use production sites in tests
+- **Test Data Cleanup**: Run `python clean_test_data.py` after testing to remove test data

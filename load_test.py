@@ -14,9 +14,9 @@ async def test_ranking_data_api(client: httpx.AsyncClient, user_id: int) -> dict
     """Test ranking-data API endpoint."""
     start_time = time.time()
 
-    # Test data for Urban Life (site_id 17)
+    # Test data for test site
     payload = {
-        "site_id": 17,
+        "site_id": 3,  # Use test site instead of production site
         "date_from": "2025-07-22",
         "date_to": "2025-07-25",
         "queries": ["美容", "護膚"],
@@ -78,7 +78,7 @@ async def test_csv_export_api(client: httpx.AsyncClient, user_id: int) -> dict[s
     try:
         response = await client.get(
             "http://localhost:8000/api/v1/page-keyword-performance/csv/",
-            params={"site_id": 17, "days": 3},
+            params={"site_id": 3, "days": 3},  # Use test site
             timeout=30.0,
         )
 
@@ -232,7 +232,7 @@ def analyze_results(ranking_results: list[dict], csv_results: list[dict]):
 async def main():
     """Main test execution."""
     print("🚀 Starting GSC Database API Load Test")
-    print("Testing urbanlifehk.com (site_id: 17) with 3 days of synced data")
+    print("Testing test site (site_id: 3) with 3 days of synced data")
 
     # Test 1: Ranking Data API
     ranking_results = await run_concurrent_test("ranking-data", test_ranking_data_api, num_users=10)
@@ -265,4 +265,10 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    finally:
+        # Clean up test data
+        print("\n🧹 Cleaning up test data...")
+        from src.utils.test_cleanup import cleanup_after_test
+        cleanup_after_test(site_id=3, recent_days=2)

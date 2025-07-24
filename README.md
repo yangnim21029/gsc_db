@@ -204,13 +204,13 @@ just api-health
 just api-sites
 
 # 測試查詢搜索（支援 hostname）
-just api-query-search urbanlifehk.com 美容
+just api-query-search test.com keyword
 
 # 測試頁面效果數據
-just api-page-performance urbanlifehk.com
+just api-page-performance test.com
 
 # 同步狀態檢查
-just api-sync-status-hostname urbanlifehk.com
+just api-sync-status-hostname test.com
 ```
 
 ### API 特色功能
@@ -220,12 +220,12 @@ just api-sync-status-hostname urbanlifehk.com
 # 使用 hostname（用戶友好）
 curl -X POST http://localhost:8000/api/v1/analytics/ranking-data \
   -H "Content-Type: application/json" \
-  -d '{"hostname": "urbanlifehk.com", "date_from": "2025-07-20", "date_to": "2025-07-25"}'
+  -d '{"hostname": "test.com", "date_from": "2025-07-20", "date_to": "2025-07-25"}'
 
 # 使用 site_id（高效能）
 curl -X POST http://localhost:8000/api/v1/analytics/ranking-data \
   -H "Content-Type: application/json" \
-  -d '{"site_id": 17, "date_from": "2025-07-20", "date_to": "2025-07-25"}'
+  -d '{"site_id": 3, "date_from": "2025-07-20", "date_to": "2025-07-25"}'
 ```
 
 ## 🎯 同步模式說明
@@ -237,13 +237,13 @@ curl -X POST http://localhost:8000/api/v1/analytics/ranking-data \
 ### 使用建議
 ```bash
 # 日常更新使用 skip 模式
-just sync-site 17 7 skip
+just sync-site 1 7 skip
 
 # 數據修正使用 overwrite 模式
-just sync-site 17 14 overwrite
+just sync-site 1 14 overwrite
 
 # 批次同步（自動順序處理）
-just sync-multiple "1,3,17" 7 skip
+just sync-multiple "1,2,5" 7 skip
 ```
 
 ## 🏗️ 現代化架構
@@ -402,6 +402,28 @@ just check
 
 # 執行性能測試
 poetry run python load_test.py
+
+# 清理測試數據
+poetry run python clean_test_data.py
+```
+
+## ⚠️ 測試數據管理
+
+### 重要提醒
+- **測試網站**：使用 site_id: 3 (test.com) 進行測試
+- **生產網站**：避免在測試中使用生產 site_id（如 17 為 urbanlifehk.com）
+- **數據清理**：測試完成後務必清理測試數據
+
+### 清理測試數據
+```bash
+# 清理最近 7 天的測試數據
+python clean_test_data.py --site-id 3 --days 7
+
+# 清理所有測試數據（謹慎使用）
+python clean_test_data.py --site-id 3 --all
+
+# 清理未來日期的數據（可能是測試數據）
+python clean_test_data.py --future
 ```
 
 ## 📊 效能基準

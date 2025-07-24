@@ -19,7 +19,7 @@ async def show_sync_status():
         # Check a few common site IDs
         print("=== Sync Progress Status ===\n")
 
-        for site_id in [1, 5, 17]:  # Check these site IDs
+        for site_id in [1, 3, 5]:  # Check these site IDs (use test site)
             progress = await tracker.get_incomplete_sync(site_id)
 
             if progress:

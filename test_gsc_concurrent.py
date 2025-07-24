@@ -162,7 +162,7 @@ async def test_sequential_vs_concurrent():
     print("=" * 60)
 
     # Test sites (using a few different sites)
-    test_site_ids = [1, 2, 17]  # businessfocus.io, mamidaily.com, urbanlifehk.com
+    test_site_ids = [1, 2, 3]  # businessfocus.io, mamidaily.com, test site
 
     print(f"\nTesting with sites: {test_site_ids}")
 

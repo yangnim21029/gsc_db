@@ -217,7 +217,7 @@ async def main():
     test_sites = [
         "sc-domain:businessfocus.io",
         "sc-domain:mamidaily.com",
-        "sc-domain:urbanlifehk.com",
+        "sc-domain:test.com",  # Use test site
         "sc-domain:petcutecute.com",
     ]
 

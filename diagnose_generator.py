@@ -32,11 +32,14 @@ def main():
 
     try:
         # 使用 ProcessSafeDatabase 來正確初始化
+        from src.config import settings
         from src.services.gsc_client import GSCClient
         from src.services.process_safe_database import ProcessSafeDatabase
 
         # 初始化服務
-        process_safe_db = ProcessSafeDatabase()
+        database_path = str(settings.paths.database_path)
+        logger.info(f"使用資料庫路徑: {database_path}")
+        process_safe_db = ProcessSafeDatabase(database_path)
         db = process_safe_db.get_database()
         gsc_client = GSCClient(db)
 

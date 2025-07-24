@@ -47,7 +47,7 @@ class CacheService:
         if self.redis_cache:
             await self.redis_cache.close()
 
-    def _cache_key(self, prefix: str, **params) -> str:
+    def _cache_key(self, prefix: str, **params: Any) -> str:
         """Generate stable cache key from parameters."""
         # Sort parameters for consistent key generation
         key_data = json.dumps(params, sort_keys=True)
@@ -112,7 +112,7 @@ class CacheService:
                 await self.redis_cache.clear()
 
     async def get_or_compute(
-        self, key_prefix: str, compute_func, ttl: int | None = None, **params
+        self, key_prefix: str, compute_func: Any, ttl: int | None = None, **params: Any
     ) -> Any:
         """Get from cache or compute and cache result."""
         if not self.enabled:

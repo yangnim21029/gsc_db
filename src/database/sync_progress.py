@@ -56,7 +56,8 @@ class SyncProgressTracker:
             ON sync_progress(site_id, sync_type, completed_at)
         """)
 
-        await self._conn.commit()
+        if self._conn:
+            await self._conn.commit()
 
     async def close(self) -> None:
         """Close database connection."""
@@ -76,7 +77,8 @@ class SyncProgressTracker:
             (site_id, sync_type, total_days, datetime.now()),
         )
 
-        await self._conn.commit()
+        if self._conn:
+            await self._conn.commit()
         return cursor.lastrowid or 0
 
     async def update_progress(
@@ -87,6 +89,8 @@ class SyncProgressTracker:
         records_synced_today: int,
     ) -> None:
         """Update sync progress after completing a day."""
+        if not self._conn:
+            raise RuntimeError("Database not initialized")
         await self._conn.execute(
             """
             UPDATE sync_progress
@@ -105,10 +109,13 @@ class SyncProgressTracker:
             ),
         )
 
-        await self._conn.commit()
+        if self._conn:
+            await self._conn.commit()
 
     async def complete_sync(self, progress_id: int) -> None:
         """Mark sync as completed."""
+        if not self._conn:
+            raise RuntimeError("Database not initialized")
         await self._conn.execute(
             """
             UPDATE sync_progress
@@ -118,10 +125,13 @@ class SyncProgressTracker:
             (datetime.now(), progress_id),
         )
 
-        await self._conn.commit()
+        if self._conn:
+            await self._conn.commit()
 
     async def fail_sync(self, progress_id: int, error: str) -> None:
         """Mark sync as failed with error."""
+        if not self._conn:
+            raise RuntimeError("Database not initialized")
         await self._conn.execute(
             """
             UPDATE sync_progress
@@ -132,10 +142,13 @@ class SyncProgressTracker:
             (error[:500], datetime.now(), progress_id),
         )  # Limit error message length
 
-        await self._conn.commit()
+        if self._conn:
+            await self._conn.commit()
 
     async def get_incomplete_sync(self, site_id: int, sync_type: str = "daily") -> dict | None:
         """Get the most recent incomplete sync for a site."""
+        if not self._conn:
+            raise RuntimeError("Database not initialized")
         cursor = await self._conn.execute(
             """
             SELECT id, last_completed_date, days_completed,
@@ -164,6 +177,8 @@ class SyncProgressTracker:
 
     async def cleanup_old_progress(self, days_to_keep: int = 30) -> None:
         """Clean up old completed sync records."""
+        if not self._conn:
+            raise RuntimeError("Database not initialized")
         await self._conn.execute(
             """
             DELETE FROM sync_progress
@@ -173,4 +188,5 @@ class SyncProgressTracker:
             (days_to_keep,),
         )
 
-        await self._conn.commit()
+        if self._conn:
+            await self._conn.commit()

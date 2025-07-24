@@ -110,7 +110,10 @@ async def get_ranking_data(
 
     # Cache the result
     if cache:
-        await cache.set(cache_key, response.model_dump(), ttl=3600)
+        # msgspec doesn't have model_dump, use dict conversion
+        import msgspec
+
+        await cache.set(cache_key, msgspec.to_builtins(response), ttl=3600)
 
     return response
 

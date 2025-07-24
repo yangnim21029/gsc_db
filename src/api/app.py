@@ -53,12 +53,12 @@ async def lifespan(app: Litestar):
 
 async def get_db(state: State) -> HybridDataStore:
     """Dependency to get database instance."""
-    return state.db
+    return state.db  # type: ignore[no-any-return]
 
 
 async def get_cache(state: State) -> CacheService | None:
     """Dependency to get cache instance."""
-    return state.cache
+    return state.cache  # type: ignore[no-any-return]
 
 
 def create_app() -> Litestar:

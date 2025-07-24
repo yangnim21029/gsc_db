@@ -1,5 +1,7 @@
 """Monitoring and observability setup using OpenTelemetry and Prometheus."""
 
+from typing import Any
+
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
@@ -95,7 +97,7 @@ class MonitoredService:
 class SyncMonitor(MonitoredService):
     """Monitor for sync operations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize sync monitor."""
         super().__init__("sync_service")
 
@@ -122,15 +124,15 @@ class SyncMonitor(MonitoredService):
 class QueryMonitor(MonitoredService):
     """Monitor for database queries."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize query monitor."""
         super().__init__("query_service")
 
     @query_histogram.labels(query_type="ranking_data").time()
-    def monitor_ranking_query(self, func):
+    def monitor_ranking_query(self, func: Any) -> Any:
         """Decorator to monitor ranking queries."""
 
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             with self.create_span("ranking_query") as span:
                 span.set_attribute("site_id", kwargs.get("site_id"))
                 span.set_attribute("date_range", str(kwargs.get("date_range")))
@@ -151,7 +153,7 @@ class QueryMonitor(MonitoredService):
 class CacheMonitor(MonitoredService):
     """Monitor for cache operations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize cache monitor."""
         super().__init__("cache_service")
 

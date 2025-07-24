@@ -5,7 +5,7 @@ import uvicorn
 from .config import get_settings
 
 
-def main():
+def main() -> None:
     """Run the API server."""
     settings = get_settings()
 

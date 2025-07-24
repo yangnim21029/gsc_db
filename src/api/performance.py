@@ -38,9 +38,13 @@ async def get_page_keyword_performance(
         start_date = end_date - timedelta(days=data.days)
         date_range = (start_date, end_date)
 
-    # Get performance data
+    # Get performance data - convert dates to strings for database
+    str_date_range = None
+    if date_range:
+        str_date_range = (date_range[0].isoformat(), date_range[1].isoformat())
+
     results = await db.get_page_keyword_performance(
-        site_id=site_id, date_range=date_range, url_filter=data.query
+        site_id=site_id, date_range=str_date_range, url_filter=data.query
     )
 
     return PageKeywordPerformanceResponse(

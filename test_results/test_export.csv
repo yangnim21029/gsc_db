@@ -1,0 +1,1 @@
+{"status_code":400,"detail":"Validation failed for GET /api/v1/page-keyword-performance/csv?site_id=1&days=30","extra":[{"message":"Expected `str | null`, got `MultiDict`","key":"query"}]}

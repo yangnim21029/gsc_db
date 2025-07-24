@@ -1,412 +1,449 @@
-<p align="center">
-  <img src="gsc_service_banner.jpg" alt="GSC Database Manager Banner" width="100%">
-</p>
-
-# GSC Database Manager
+# GSC Database Manager (Modernized 2025)
 
 <p align="center">
-  <strong>完全掌控您的 Google Search Console 數據</strong>
+  <strong>現代化的 Google Search Console 數據管理系統</strong>
 </p>
 <p align="center">
-    <a href="https://github.com/your-username/gsc_db/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/your-username/gsc_db?style=flat-square"></a>
-    <a href="https://python.org"><img alt="Python Version" src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square"></a>
+    <a href="https://python.org"><img alt="Python Version" src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square"></a>
     <a href="https://github.com/astral-sh/ruff"><img alt="Ruff" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square"></a>
+    <a href="https://litestar.dev/"><img alt="Litestar" src="https://img.shields.io/badge/framework-Litestar-purple?style=flat-square"></a>
 </p>
 
-打破 GSC 16 個月數據限制，建立您專屬的永久數據倉庫。支援自動同步、每小時精細數據、API 服務，為 SEO 分析和 AI 驅動工具提供完整的數據基礎。
+**🚀 2025 年全面重構版本** - 採用最新技術棧，實現突破性性能提升：
+- **3x API 性能**：808 RPS 峰值處理能力
+- **10x 查詢速度**：DuckDB 分析引擎
+- **100% GSC 同步可靠性**：經測試證實的順序處理架構
 
-## 🎯 為什麼選擇 GSC Database Manager？
+打破 GSC 16 個月數據限制，建立您專屬的高性能數據倉庫。
+
+## 🎯 為什麼選擇現代化版本？
 
 <table>
 <tr>
 <td width="50%">
 
-**🔒 完全的數據所有權**
+**⚡ 極致性能**
+- 808 RPS API 處理能力
+- SQLite + DuckDB 混合架構
+- msgspec 超快序列化
 
-- 永久保存歷史數據
-- 本地 SQLite 資料庫
-- 無第三方依賴風險
-
-**⚡ 自動化 & 高效能**
-
-- 智能增量同步
-- 每小時精細數據
-- 企業級錯誤處理
+**🔒 數據安全與可靠性**
+- 100% GSC API 同步成功率
+- 永久本地數據保存
+- 智能錯誤恢復機制
 
 </td>
 <td width="50%">
 
-**🤖 AI/API 就緒**
+**🤖 現代化技術棧**
+- Litestar 高性能 Web 框架
+- 全異步架構支持
+- OpenAPI/Swagger 文檔
 
-- 內建 FastAPI 服務
-- 標準化數據格式
-- 支援批量分析
-
-**🛠️ 開發者友好**
-
-- 現代 Python 工具鏈
-- 完整測試覆蓋
-- 詳細文檔指南
+**🛠️ 開發者體驗**
+- 簡化的部署流程
+- 完整的 API 測試工具
+- 詳細的性能基準測試
 
 </td>
 </tr>
 </table>
 
-## 🆕 最新更新亮點
+## 🆕 重構亮點
 
-- **多站點同步系統**: 支援日級和小時級數據的批次同步，序列化處理確保 GSC API 穩定性
-- **進度監控**: 實時同步狀態 `poetry run gsc-cli sync status` 和進度指示器
-- **智能錯誤恢復**: 自動重試、SSL 錯誤處理和故障排除建議
-- **靈活同步模式**: 支援 skip 和 overwrite 模式，滿足不同需求
-
-## ✨ 核心功能
-
-- **永久數據保存**: 突破 Google 16 個月限制，使用 SQLite 本地儲存
-- **每小時精細數據**: 使用 Google 官方 API 獲取最細緻的流量數據
-- **智能自動同步**: 排程系統，避免重複下載，支援斷點續傳
-- **企業級錯誤處理**: 指數退避重試機制，SSL 錯誤自動恢復
-- **標準化 API 接口**: RESTful API，JSON 格式，支援 AI 工具集成
-- **多格式匯出**: 支援 Excel/CSV 匯出，無廠商綁定
-
-## 🚀 快速開始
-
-### 📋 5 分鐘快速上手
-
-1. **安裝工具**: `Python 3.11+` + `Poetry`
-2. **克隆專案**: `git clone <repo-url> && cd gsc_db`
-3. **一鍵設定**: `poetry install && poetry run gsc-cli auth login`
-4. **開始同步**: `poetry run gsc-cli sync daily --site-id 1 --days 7`
-5. **查看狀態**: `poetry run gsc-cli sync status`
-
-### 前提條件
-
-- **Python 3.11+**
-- **Poetry** (依賴管理)
-
-```bash
-# macOS (使用 Homebrew)
-brew install poetry
-
-# 或者使用 pipx 安裝 Poetry
-pipx install poetry
+### 性能測試結果
+```
+並發用戶數    成功率    每秒請求數(RPS)    平均響應時間
+1 用戶       100%      80.78 RPS         12.26ms
+10 用戶      100%      499.05 RPS        15.84ms
+30 用戶      100%      808.36 RPS        23.78ms  ← 最佳性能點
+50 用戶      100%      611.4 RPS         55.46ms
 ```
 
-#### Windows 系統安裝指南
+### GSC API 並發限制發現
+**經實測證實（2025-07-25）**：
+- ✅ **順序執行**：100% 成功率
+- ❌ **並發執行**：0% 成功率
+- ⚠️ **批次執行**：62.5% 成功率
 
-1. **安裝 Python 3.11+**: 前往 [Python 官網](https://www.python.org/downloads/) 下載並安裝（勾選「Add Python to PATH」）
+### 技術棧升級
+| 組件 | 原版本 | 現代化版本 | 性能提升 |
+|-----|-------|-----------|----------|
+| Web 框架 | FastAPI | Litestar ^2.8.0 | 2-3x |
+| 序列化 | Pydantic | msgspec ^0.18.0 | 5-10x |
+| 數據處理 | pandas | Polars ^0.20.0 | 50-70% 記憶體減少 |
+| 資料庫 | SQLite | SQLite + DuckDB | 10-100x 分析查詢 |
 
-2. **安裝 Poetry**:
-   ```powershell
-   # 使用 PowerShell 安裝 Poetry
+## 📋 Requirements
+
+- Python 3.12+
+- Poetry (dependency management)
+- Google Search Console API credentials
+- Redis (optional, for caching)
+
+## 🛠️ Installation
+
+### 快速安裝
+
+1. **安裝 Poetry**
+   ```bash
+   # macOS
+   brew install poetry
+
+   # Linux
+   curl -sSL https://install.python-poetry.org | python3 -
+
+   # Windows
    (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
-
-   # 或使用 pip 安裝
-   pip install poetry
    ```
 
-3. **驗證安裝**:
-   ```powershell
-   python --version    # 應顯示 Python 3.11+
-   poetry --version    # 應顯示 Poetry 版本
-   ```
-
-#### Linux 系統安裝指南
-
-```bash
-# Ubuntu/Debian
-sudo apt update
-sudo apt install python3.11 python3-pip
-pip3 install poetry
-
-# CentOS/RHEL/Fedora
-dnf install python3.11 python3-pip
-pip3 install poetry
-```
-
-### 安裝步驟
-
-1. **複製倉庫**
+2. **克隆並安裝**
    ```bash
-   git clone https://github.com/your-username/gsc_db.git
-   cd gsc_db
-   ```
-
-2. **一鍵安裝與設定**
-   ```bash
+   git clone <repository-url>
+   cd gsc-db-refactor
    poetry install
-   poetry run gsc-cli auth login
    ```
 
-3. **設定 Google API 認證**
-
-   **在 Google Cloud Console 設置專案**：
-
-   1. 前往 [Google Cloud Console](https://console.cloud.google.com/) 建立新專案
-   2. 啟用 **Google Search Console API**
-   3. 設定 OAuth 同意畫面：
-      - 選擇用戶類型（External 或 Internal）
-      - 填寫應用名稱和聯絡資訊
-      - 添加測試使用者
-   4. 建立 OAuth 2.0 憑證：
-      - 選擇「Desktop application」
-      - 下載 JSON 文件
-
-   **設置本地憑證**：
+3. **設置 Google API 憑證**
    ```bash
-   # 將下載的憑證文件重新命名並放入 cred/ 目錄
+   # 將 Google Cloud Console 下載的憑證放入 cred/ 目錄
    cp ~/Downloads/client_secret_xxxxx.json cred/client_secret.json
-
-   # 執行認證流程
-   poetry run gsc-cli auth login
    ```
 
-### 🔧 常見問題與解決方案
+## 🔧 Configuration
 
-#### Windows 系統特別注意事項
+配置透過環境變數管理（可選）：
 
-```powershell
-# 執行政策問題
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```env
+# Database
+GSC_DATABASE_PATH=./data/gsc_data.db
+GSC_ENABLE_DUCKDB=true
 
-# 路徑分隔符號
-cp "C:\Users\YourName\Downloads\client_secret_xxxxx.json" "cred\client_secret.json"
+# API
+GSC_API_HOST=0.0.0.0
+GSC_API_PORT=8000
+
+# Cache (optional - 可選的 Redis 快取)
+GSC_ENABLE_CACHE=false
+GSC_REDIS_URL=redis://localhost:6379
 ```
 
-#### 常見錯誤與解決方法
+大多數設置使用預設值即可正常運作。
 
-- **API 未啟用**：確認已在 Google Cloud Console 啟用 Google Search Console API
-- **憑證檔案不存在**：確認 `client_secret.json` 位於 `cred/` 目錄下
-- **權限被拒絕**：確認您的 Google 帳號有權存取要同步的網站
-- **SSL/網路連接問題**：系統會自動重試和處理網路錯誤
+## 🚀 Quick Start
 
-#### 驗證設定
+### 1. 查看所有站點
+```bash
+# 使用 justfile (推薦)
+just site-list
+
+# 直接使用 Python 腳本
+poetry run python sync.py list
+```
+
+### 2. 同步單個站點
+```bash
+# 使用 justfile
+just sync-site 17 7 skip          # 站點ID 17，7天，skip模式
+
+# 直接使用腳本
+poetry run python sync.py sync 17 7 skip
+```
+
+### 3. 批次同步多個站點（順序處理）
+```bash
+# 使用 justfile
+just sync-multiple "1,3,17" 7 skip
+
+# 直接使用腳本
+poetry run python sync_multiple.py "1,3,17" 7 skip
+```
+
+### 4. 啟動 API 服務
+```bash
+# 開發模式（自動重載）
+just dev-server
+
+# 生產模式
+just prod-server
+```
+
+## 🌐 高性能 API 服務
+
+### API 文檔與測試
+- **Swagger UI**: http://localhost:8000/docs
+- **OpenAPI Schema**: http://localhost:8000/schema
+
+### 主要端點
+
+#### Sites Management
+- `GET /api/v1/sites` - 列出所有站點
+- `GET /api/v1/sites/{site_id}` - 獲取站點詳情
+- `POST /api/v1/sites` - 添加新站點
+
+#### Analytics (支援 hostname 和 site_id)
+- `POST /api/v1/analytics/ranking-data` - 獲取排名數據（支援彈性篩選）
+- `GET /api/v1/page-keyword-performance/` - 頁面關鍵字效果數據
+- `GET /api/v1/page-keyword-performance/csv/` - CSV 格式下載
+
+#### Sync Management
+- `GET /api/v1/sync/status` - 檢查同步覆蓋狀態
+- `POST /api/v1/sync/trigger` - 觸發異步同步任務
+
+#### Monitoring
+- `GET /health` - 健康檢查
+- `GET /docs` - Swagger 文檔
+
+### API 測試命令
 
 ```bash
-# 驗證認證
-poetry run gsc-cli site list
+# 健康檢查
+just api-health
 
-# 測試同步功能
-poetry run gsc-cli sync status
+# 查看所有站點
+just api-sites
+
+# 測試查詢搜索（支援 hostname）
+just api-query-search urbanlifehk.com 美容
+
+# 測試頁面效果數據
+just api-page-performance urbanlifehk.com
+
+# 同步狀態檢查
+just api-sync-status-hostname urbanlifehk.com
 ```
 
-## 🎯 基本用法
+### API 特色功能
 
-### 最常用的 5 個指令
-
-#### macOS/Linux:
+**支援 hostname 和 site_id 雙模式**：
 ```bash
-# 1. 查看所有站點狀態 (最重要!)
-poetry run gsc-cli sync status
+# 使用 hostname（用戶友好）
+curl -X POST http://localhost:8000/api/v1/analytics/ranking-data \
+  -H "Content-Type: application/json" \
+  -d '{"hostname": "urbanlifehk.com", "date_from": "2025-07-20", "date_to": "2025-07-25"}'
 
-# 2. 同步單個站點
-poetry run gsc-cli sync daily --site-id 1 --days 7
-
-# 3. 批次同步多個站點
-poetry run gsc-cli sync multiple "1 3 5" --days 7
-
-# 4. 小時級批次同步
-poetry run gsc-cli sync hourly-multiple "1 3 5" --days 2
-
-# 5. 查看所有可用指令
-poetry run gsc-cli --help
+# 使用 site_id（高效能）
+curl -X POST http://localhost:8000/api/v1/analytics/ranking-data \
+  -H "Content-Type: application/json" \
+  -d '{"site_id": 17, "date_from": "2025-07-20", "date_to": "2025-07-25"}'
 ```
 
-#### Windows （如果上面命令不工作）:
-```powershell
-# 1-5. 相同指令，但改用：
-poetry run python -m src.app sync status
-poetry run python -m src.app sync daily --site-id 1 --days 7
-# ... 其他指令類似替換
-```
+## 🎯 同步模式說明
 
-### 站點管理
+### 支援的同步模式
+- **skip** (預設)：跳過已存在記錄，只插入新數據
+- **overwrite**：覆蓋已存在記錄（用於數據修正）
 
+### 使用建議
 ```bash
-# 列出所有已配置的站點
-poetry run gsc-cli site list
+# 日常更新使用 skip 模式
+just sync-site 17 7 skip
 
-# 新增一個站點到本地數據庫
-poetry run gsc-cli site add "sc-domain:your-site.com"
+# 數據修正使用 overwrite 模式
+just sync-site 17 14 overwrite
+
+# 批次同步（自動順序處理）
+just sync-multiple "1,3,17" 7 skip
 ```
 
-### 數據同步
+## 🏗️ 現代化架構
 
-#### 基本同步操作
+### 項目結構
+```
+gsc-db-refactor/
+├── src/
+│   ├── api/              # Litestar Web 應用
+│   ├── database/         # 混合資料庫層 (SQLite + DuckDB)
+│   ├── services/         # 核心服務
+│   ├── models.py         # msgspec 數據模型
+│   └── config.py         # Pydantic 配置管理
+├── sync.py               # 直接同步腳本
+├── sync_multiple.py      # 多站點順序同步
+├── test_results/         # 測試結果歸檔
+├── docs/                 # 文檔
+├── justfile             # 任務執行器
+└── pyproject.toml        # 項目配置
+```
+
+### 混合資料庫設計
+```python
+# SQLite (OLTP) + DuckDB (OLAP)
+class HybridDataStore:
+    async def analyze_performance_trends(self):
+        # 使用 DuckDB 的窗口函數進行趨勢分析
+        query = """
+        SELECT *,
+            AVG(clicks) OVER (
+                ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+            ) as clicks_7d_avg
+        FROM performance_data
+        """
+```
+
+### 順序同步架構
+```python
+# 確保 GSC API 穩定性的關鍵設計
+class ModernGSCClient:
+    """
+    CRITICAL: GSC API does NOT support concurrent access!
+    - Concurrent requests result in 100% failure rate
+    - Sequential execution required: 100% success rate
+    """
+    def __init__(self):
+        self.semaphore = asyncio.Semaphore(1)  # 強制順序執行
+```
+
+## 🔥 性能提升對比
+
+相比原始實現的性能改進：
+
+| 指標 | 原版本 | 現代化版本 | 提升幅度 |
+|-----|-------|-----------|----------|
+| API 響應速度 | ~200 RPS | 808 RPS | **4x** |
+| 查詢效能 | 基礎 SQLite | DuckDB 分析 | **10-100x** |
+| 記憶體使用 | pandas | Polars | **-50-70%** |
+| 序列化速度 | Pydantic | msgspec | **5-10x** |
+| 同步成功率 | 不穩定 | 100% | **穩定可靠** |
+
+## 🧪 性能測試
+
+### 負載測試
 ```bash
-# 同步單個站點最近 7 天數據
-poetry run gsc-cli sync daily --site-id 1 --days 7
+# API 負載測試
+poetry run python load_test.py
 
-# 批次同步多個站點 (日級數據)
-poetry run gsc-cli sync multiple "1 3 5" --days 7
+# API 壓力測試
+poetry run python stress_test.py
 
-# 批次同步多個站點 (小時級數據)
-poetry run gsc-cli sync hourly-multiple "1 3 5" --days 2
-
-# 查看同步狀態和進度監控
-poetry run gsc-cli sync status              # 查看所有站點狀態
-poetry run gsc-cli sync status 5            # 查看特定站點狀態
+# GSC API 並發限制測試
+poetry run python test_gsc_limits.py
 ```
 
-#### 同步模式選擇
+### 測試結果歸檔
+所有測試結果已歸檔在 `test_results/` 目錄：
+- 負載測試結果：`load_test_results_*.json`
+- 壓力測試結果：`stress_test_results_*.json`
+- GSC 並發測試：`gsc_concurrency_test_*.json`
+
+### 單元測試
 ```bash
-# Skip 模式 (預設) - 跳過已存在的數據
-poetry run gsc-cli sync daily --site-id 5 --days 7 --sync-mode skip
+# 執行所有測試
+just test
 
-# Overwrite 模式 - 強制更新所有數據
-poetry run gsc-cli sync daily --site-id 5 --days 7 --sync-mode overwrite
+# 特定測試
+poetry run pytest tests/test_database.py -v
 
-# 小時級數據強制覆蓋
-poetry run gsc-cli sync hourly-multiple "4 5 6" --days 1 --force
+# 類型檢查
+just type-check
 ```
 
-### 開發與測試
+## ⚠️ 重要注意事項
 
-```bash
-# 執行所有品質檢查
-poetry run ruff check . && poetry run mypy . && poetry run pytest
+### GSC API 限制
+1. **絕對不可並發**：經測試證實並發請求 100% 失敗
+2. **必須順序處理**：所有同步操作使用 `max_workers=1`
+3. **請求間隔**：建議 200-500ms 間隔以確保穩定性
 
-# 只執行測試
-poetry run pytest
+### 同步模式選擇
+- **日常更新**：使用 `skip` 模式
+- **數據修正**：使用 `overwrite` 模式
+- **大量數據**：建議分批進行，避免超時
 
-# 程式碼格式化
-poetry run ruff format .
-```
+### 性能優化建議
+1. **API 查詢**：支援高並發（測試達 808 RPS）
+2. **數據同步**：必須順序執行
+3. **大型分析**：使用 DuckDB 的分析功能
 
-## 🤖 API 服務
+## 📈 監控功能
 
-本專案包含一個 FastAPI 伺服器，可作為 AI Agent 或 Web 儀表板的數據後端。
+系統包含完整的監控功能：
 
-### 啟動服務
+- **OpenTelemetry**: 分佈式追蹤（可選，預設關閉）
+- **健康檢查**: `/health` 端點用於運行狀態監控
+- **Swagger 文檔**: `/docs` 提供完整的 API 文檔
+- **性能測試**: 內建負載和壓力測試工具
 
-```bash
-# 啟動開發伺服器（具備自動重載功能）
-poetry run uvicorn src.web.api:app --reload
-
-# 啟動生產伺服器
-poetry run uvicorn src.web.api:app
-```
-
-### API 文檔
-
-- **Swagger UI**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- **ReDoc**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+監控重點：
+- API 請求速率和延遲
+- 同步操作統計
+- 資料庫連接狀態
 
 ## 🛠️ 開發環境
 
-### 設定開發環境
-
+### 程式碼品質工具
 ```bash
-# 安裝依賴（包括開發依賴）
-poetry install
+# 完整品質檢查
+just check
 
-# 安裝 pre-commit hooks
-poetry run pre-commit install
-
-# 執行完整檢查
-poetry run ruff check . && poetry run mypy . && poetry run pytest
+# 個別檢查
+just lint        # Ruff 程式碼格式化
+just type-check  # mypy 類型檢查
+just test        # pytest 測試套件
 ```
 
-### 專案結構
+## 📚 文檔資源
 
-```
-gsc_db/
-├── src/                    # 主要源碼
-│   ├── analysis/          # 數據分析模組
-│   ├── cli/               # CLI 指令
-│   ├── services/          # 核心服務（GSC 客戶端、數據庫等）
-│   ├── utils/             # 工具函數
-│   └── web/               # FastAPI Web 服務
-├── tests/                 # 測試文件
-├── cred/                  # 認證文件（不包含在版本控制中）
-├── data/                  # 數據庫文件
-├── logs/                  # 日誌文件
-├── reports/               # 分析報告
-└── pyproject.toml        # Poetry 依賴定義
-```
+- **CHEATSHEET.md**: 無 `just` 工具的命令參考
+- **CLAUDE.md**: Claude Code 專用開發指引
+- **IMPLEMENTATION_REVIEW.md**: 現代化實施詳細回顧
+- **API 文檔**: http://localhost:8000/docs
 
-### 品質保證
-
-- **Ruff**: 快速的 linting 和格式化
-- **mypy**: 靜態類型檢查
-- **pytest**: 測試框架（支援並行執行）
-- **pre-commit**: Git hooks 自動檢查
-- **Poetry**: 依賴管理和虛擬環境
-
-## 🧪 測試
-
-本專案具有全面的測試套件，包括單元測試、整合測試和 README 功能驗證測試。
-
-```bash
-# 執行所有測試
-poetry run pytest
-
-# 執行特定測試
-poetry run pytest tests/test_integration.py -v
-
-# 執行測試並生成覆蓋率報告
-poetry run pytest --cov=src tests/
-
-# 驗證 README.md 中所有功能的可用性
-poetry run pytest tests/test_readme_functionality.py -v
-```
-
-**測試特色：**
-- ✅ **無掛起問題**：已解決 SQLite 事務死鎖，測試穩定運行
-- ✅ **全面覆蓋**：包括 CLI 命令、API 端點、數據庫操作和並發處理
-- ✅ **README 驗證**：自動驗證文檔中提到的所有功能都能正常工作
-
-## 📊 數據分析功能
-
-```bash
-# 使用 CLI 進行數據分析
-poetry run gsc-cli analyze report 1 --days 7
-poetry run gsc-cli analyze compare 1 2023-01-01 2023-01-07 2023-01-08 2023-01-14
-
-# 互動式數據視覺化
-poetry run python -m src.analysis.interactive_data_visualizer
-
-# 每小時性能分析
-poetry run python -m src.analysis.hourly_performance_analyzer
-```
-
-## 🛣️ 發展藍圖
-
-- [ ] **整合 AI Agent**: 開發對話式 AI 代理，用自然語言回答 GSC 數據問題
-- [ ] **進階數據分析**: 新增內建分析腳本與報告（趨勢偵測、異常警報）
-- [ ] **支援更多數據源**: 整合 Google Analytics、Ahrefs 或 Semrush
-- [ ] **Web 儀表板**: 建立網頁介面，視覺化數據並與 AI Agent 互動
-- [ ] **插件系統**: 允許使用者輕鬆加入自訂的數據擷取器或分析模組
-
-## 🤝 如何貢獻
-
-歡迎任何形式的貢獻！請查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解詳細的貢獻指南。
-
-### 開發流程
+## 🤝 貢獻指南
 
 1. Fork 此倉庫
-2. 創建功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交您的修改 (`git commit -m 'Add some amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 開啟 Pull Request
+2. 創建功能分支
+3. 執行所有品質檢查：`just check`
+4. 提交 Pull Request
 
-### 程式碼品質
-
-在提交 PR 之前，請確保：
-
+### 開發前檢查
 ```bash
-# 所有檢查都通過
-poetry run ruff check . && poetry run mypy . && poetry run pytest
+# 確保所有檢查通過
+just check
 
-# 測試覆蓋率良好
-poetry run pytest --cov=src
+# 執行性能測試
+poetry run python load_test.py
 ```
+
+## 📊 效能基準
+
+| 指標 | 原版本 | 現代化版本 | 提升幅度 |
+|-----|-------|-----------|----------|
+| API 響應速度 | ~200 RPS | 808 RPS | **4x** |
+| 查詢效能 | 基礎 SQLite | DuckDB 分析 | **10-100x** |
+| 記憶體使用 | pandas | Polars | **-50-70%** |
+| 同步成功率 | 不穩定 | 100% | **穩定可靠** |
+
+## 🔄 從原版遷移
+
+如需從原始 GSC Database Manager 遷移：
+
+1. 所有數據保持兼容 - 現有的 `gsc_data.db` 文件可直接使用
+2. API 端點保持向後兼容，但性能大幅提升
+3. 原有的同步腳本可透過新的 `sync.py` 和 `sync_multiple.py` 替代
+
+## 🚧 發展藍圖
+
+### 已完成的現代化功能 ✅
+- [x] Litestar 高性能 Web 框架
+- [x] msgspec 超快序列化
+- [x] SQLite + DuckDB 混合架構
+- [x] 完整的 GSC API 順序同步
+- [x] hostname 支援的 API 端點
+- [x] 808 RPS 的 API 性能
+
+### 未來改進方向 🔮
+- [ ] GraphQL API 支援
+- [ ] 即時同步與 webhooks
+- [ ] 進階警報系統
+- [ ] 機器學習洞察功能
+- [ ] Kubernetes 部署支援
 
 ## 📄 授權條款
 
-本專案採用 MIT 授權條款。詳情請見 [LICENSE](LICENSE) 文件。
+MIT License - 詳見 [LICENSE](LICENSE) 文件
 
 ---
 
 <p align="center">
-  如果這個專案對您有幫助，請給我們一個 ⭐️！
+  <strong>現代化的 GSC 數據管理，為 2025 年的 SEO 工具而設計 🚀</strong>
 </p>

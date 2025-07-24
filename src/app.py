@@ -12,6 +12,11 @@ from src.cli import commands
 from src.config import setup_logging
 from src.containers import Container
 
+# Fix Windows encoding issues first
+from src.utils.windows_encoding_fix import fix_windows_encoding
+
+fix_windows_encoding()
+
 # 1. 建立主 Typer 應用程式
 app = typer.Typer(
     help="GSC-DB: 一個用於從 Google Search Console 下載數據並儲存到本地資料庫的 CLI 工具。",

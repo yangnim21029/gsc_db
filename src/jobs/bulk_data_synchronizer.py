@@ -34,6 +34,11 @@ from tenacity import (
 from ..config import settings
 from ..services.database import Database, SyncMode
 from ..services.gsc_client import GSCClient
+from ..utils.console_utils import (
+    format_error_message,
+    format_success_message,
+    format_warning_message,
+)
 from ..utils.rich_console import console
 
 logger = logging.getLogger(__name__)
@@ -319,12 +324,14 @@ def run_sync(
                 # 顯示本次同步結果
                 if day_stats.get("inserted", 0) > 0 or day_stats.get("updated", 0) > 0:
                     console.print(
-                        f"  [green]✓[/green] 完成: 新增 {day_stats.get('inserted', 0)} 筆, "
-                        f"更新 {day_stats.get('updated', 0)} 筆",
+                        format_success_message(
+                            f"完成: 新增 {day_stats.get('inserted', 0)} 筆, "
+                            f"更新 {day_stats.get('updated', 0)} 筆"
+                        ),
                         highlight=False,
                     )
                 else:
-                    console.print("  [yellow]⚠[/yellow] 已存在或無數據", highlight=False)
+                    console.print(format_warning_message("已存在或無數據"), highlight=False)
 
             except RetryError as e:
                 logger.error(
@@ -332,13 +339,14 @@ def run_sync(
                     f"多次嘗試後仍然失敗。最後一次錯誤: {e.last_attempt.exception()}"
                 )
                 console.print(
-                    f"  [red]✗[/red] 失敗: {str(e.last_attempt.exception())}", highlight=False
+                    format_error_message(f"失敗: {str(e.last_attempt.exception())}"),
+                    highlight=False,
                 )
                 total_stats["failed"] += 1
             except Exception as exc:
                 logger.error(f"任務 {site['name']}-{date} 產生未預期的例外: {exc}")
                 logger.debug(traceback.format_exc())
-                console.print(f"  [red]✗[/red] 錯誤: {str(exc)}", highlight=False)
+                console.print(format_error_message(f"錯誤: {str(exc)}"), highlight=False)
                 total_stats["failed"] += 1
 
             progress.update(task_id, advance=1)

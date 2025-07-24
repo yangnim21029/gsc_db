@@ -18,6 +18,14 @@ log_dir = Path(__file__).parent / "logs"
 log_dir.mkdir(exist_ok=True)
 log_file = log_dir / f"diagnose_july_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
+# Windows 編碼修復
+if sys.platform == "win32":
+    import io
+
+    # 強制 stdout 和 stderr 使用 UTF-8
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 # 設置最詳細的日誌
 logging.basicConfig(
     level=logging.DEBUG,
@@ -77,12 +85,12 @@ class DiagnosticTool:
             logger.info(f"  資料庫路徑: {database_path}")
 
             self.db = ProcessSafeDatabase(database_path)
-            logger.info("  ✓ 資料庫初始化成功")
+            logger.info("  [OK] 資料庫初始化成功")
 
             # 初始化 GSC Client
             logger.info("\n步驟 3: 初始化 GSC Client...")
             self.gsc_client = GSCClient(self.db)
-            logger.info("  ✓ GSC Client 初始化成功")
+            logger.info("  [OK] GSC Client 初始化成功")
 
             # 獲取測試站點
             logger.info("\n步驟 4: 獲取測試站點...")
@@ -94,7 +102,7 @@ class DiagnosticTool:
             if not self.site:
                 raise Exception("沒有找到可用的站點")
 
-            logger.info(f"  ✓ 使用站點: {self.site['name']} (ID: {self.site['id']})")
+            logger.info(f"  [OK] 使用站點: {self.site['name']} (ID: {self.site['id']})")
 
             return True
 
@@ -117,7 +125,7 @@ class DiagnosticTool:
                 logger.warning("  沒有 credentials")
 
             self.results["auth"] = self.gsc_client.is_authenticated()
-            logger.info("  ✓ 認證測試完成")
+            logger.info("  [OK] 認證測試完成")
 
         except Exception as e:
             logger.error(f"認證測試失敗: {e}")
@@ -159,7 +167,7 @@ class DiagnosticTool:
                         rows = response.get("rows", [])
                         elapsed = time.time() - start_time
 
-                        logger.info("  ✓ API 調用成功")
+                        logger.info("  [OK] API 調用成功")
                         logger.info(f"  返回 {len(rows)} 筆資料")
                         logger.info(f"  耗時: {elapsed:.2f} 秒")
 
@@ -174,7 +182,7 @@ class DiagnosticTool:
 
                 except Exception as e:
                     api_result["error"] = str(e)
-                    logger.error(f"  ✗ API 調用失敗: {e}")
+                    logger.error(f"  [ERROR] API 調用失敗: {e}")
 
                 finally:
                     api_done.set()
@@ -185,7 +193,7 @@ class DiagnosticTool:
 
             # 等待完成或超時
             if not api_done.wait(timeout=30):
-                logger.error("  ✗ API 調用超時 (30秒)")
+                logger.error("  [ERROR] API 調用超時 (30秒)")
                 self.results["simple_api"] = False
             else:
                 self.results["simple_api"] = api_result["success"]
@@ -244,7 +252,7 @@ class DiagnosticTool:
 
                     except Exception as e:
                         stream_result["error"] = str(e)
-                        logger.error(f"  ✗ Stream 錯誤: {e}")
+                        logger.error(f"  [ERROR] Stream 錯誤: {e}")
                         traceback.print_exc()
 
                     finally:
@@ -257,15 +265,15 @@ class DiagnosticTool:
                 # 等待完成或超時
                 timeout = 60 if days > 3 else 30
                 if not stream_done.wait(timeout=timeout):
-                    logger.error(f"  ✗ Stream 超時 ({timeout}秒)")
+                    logger.error(f"  [ERROR] Stream 超時 ({timeout}秒)")
                     self.results[f"stream_day_{days}"] = False
                 else:
                     if stream_result["error"]:
-                        logger.error(f"  ✗ Stream 失敗: {stream_result['error']}")
+                        logger.error(f"  [ERROR] Stream 失敗: {stream_result['error']}")
                         self.results[f"stream_day_{days}"] = False
                     else:
                         logger.info(
-                            f"  ✓ Stream 成功: "
+                            f"  [OK] Stream 成功: "
                             f"{stream_result['chunks']} chunks, "
                             f"{stream_result['rows']} rows"
                         )
@@ -283,7 +291,7 @@ class DiagnosticTool:
             # 測試讀取
             logger.info("  測試讀取操作...")
             sites_count = len(self.db.get_sites())
-            logger.info(f"  ✓ 讀取成功: {sites_count} 個站點")
+            logger.info(f"  [OK] 讀取成功: {sites_count} 個站點")
 
             # 測試寫入（使用測試表）
             logger.info("  測試寫入操作...")
@@ -313,7 +321,7 @@ class DiagnosticTool:
                 # 驗證寫入
                 cursor.execute("SELECT COUNT(*) FROM test_table")
                 count = cursor.fetchone()[0]
-                logger.info(f"  ✓ 寫入成功: test_table 有 {count} 筆記錄")
+                logger.info(f"  [OK] 寫入成功: test_table 有 {count} 筆記錄")
 
                 # 清理測試表
                 cursor.execute("DROP TABLE IF EXISTS test_table")
@@ -378,11 +386,11 @@ class DiagnosticTool:
 
                     elapsed = time.time() - start_time
                     logger.info(
-                        f"  ✓ 批量大小 {batch_size}: 成功處理 {batch_count} 批次, {total_rows} 行, 耗時 {elapsed:.2f}秒"
+                        f"  [OK] 批量大小 {batch_size}: 成功處理 {batch_count} 批次, {total_rows} 行, 耗時 {elapsed:.2f}秒"
                     )
 
                 except Exception as e:
-                    logger.error(f"  ✗ 批量大小 {batch_size} 失敗: {e}")
+                    logger.error(f"  [ERROR] 批量大小 {batch_size} 失敗: {e}")
 
             self.results["batch_processing"] = True
 
@@ -411,9 +419,9 @@ class DiagnosticTool:
                 test_path.write_text("測試中文", encoding="utf-8")
                 test_path.read_text(encoding="utf-8")
                 test_path.unlink()
-                logger.info("  ✓ 文件系統支持 UTF-8")
+                logger.info("  [OK] 文件系統支持 UTF-8")
             except Exception as e:
-                logger.warning(f"  ✗ 文件系統編碼問題: {e}")
+                logger.warning(f"  [WARNING] 文件系統編碼問題: {e}")
 
             # 測試網絡延遲
             logger.info("  測試網絡延遲...")
@@ -423,13 +431,13 @@ class DiagnosticTool:
                 start = time.time()
                 socket.gethostbyname("googleapis.com")
                 latency = (time.time() - start) * 1000
-                logger.info(f"  ✓ DNS 解析延遲: {latency:.2f}ms")
+                logger.info(f"  [OK] DNS 解析延遲: {latency:.2f}ms")
 
                 if latency > 1000:
-                    logger.warning("  ⚠ 網絡延遲較高，可能影響同步")
+                    logger.warning("  [WARNING] 網絡延遲較高，可能影響同步")
 
             except Exception as e:
-                logger.error(f"  ✗ 網絡測試失敗: {e}")
+                logger.error(f"  [ERROR] 網絡測試失敗: {e}")
 
             # 測試進程優先級
             logger.info("  測試進程優先級...")
@@ -490,11 +498,11 @@ class DiagnosticTool:
 
                     synchronizer.sync_sites(site_ids=[self.site["id"]], days=1, sync_mode="skip")
                     sync_result["success"] = True
-                    logger.info("  ✓ 同步完成")
+                    logger.info("  [OK] 同步完成")
 
                 except Exception as e:
                     sync_result["error"] = str(e)
-                    logger.error(f"  ✗ 同步失敗: {e}")
+                    logger.error(f"  [ERROR] 同步失敗: {e}")
                     traceback.print_exc()
 
                 finally:
@@ -507,7 +515,7 @@ class DiagnosticTool:
             # 等待完成或超時
             timeout = 180 if sys.platform == "win32" else 120
             if not sync_done.wait(timeout=timeout):
-                logger.error(f"  ✗ 同步超時 ({timeout}秒)")
+                logger.error(f"  [ERROR] 同步超時 ({timeout}秒)")
                 logger.info("\n當前線程堆疊:")
                 import faulthandler
 
@@ -535,7 +543,7 @@ class DiagnosticTool:
         logger.info("=" * 60)
 
         for test, result in self.results.items():
-            status = "✓ 通過" if result else "✗ 失敗"
+            status = "[PASS]" if result else "[FAIL]"
             logger.info(f"  {test}: {status}")
 
         logger.info("=" * 60)

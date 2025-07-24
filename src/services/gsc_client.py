@@ -213,14 +213,67 @@ class ModernGSCClient:
 
         return results
 
-    async def fetch_hourly_data(
-        self, site_url: str, target_date: date, queries: list[str] | None = None
-    ) -> dict[int, list[dict]]:
-        """Fetch hourly data for specific queries."""
-        # GSC doesn't provide hourly data directly
-        # This would need to be implemented with multiple API calls
-        # or a different data source
-        return {}
+    async def fetch_hourly_data(self, site_url: str, target_date: date) -> list[dict]:
+        """Fetch hourly data for a specific date.
+
+        Uses the new HOUR dimension and HOURLY_ALL dataState for hourly granularity.
+        Limited to last 10 days by GSC API.
+        """
+        url = f"{API_BASE_URL}/sites/{quote(site_url, safe=':')}/searchAnalytics/query"
+
+        # Prepare request body for hourly data
+        request_body = {
+            "startDate": target_date.isoformat(),
+            "endDate": target_date.isoformat(),
+            "dataState": "HOURLY_ALL",  # Required for hourly data
+            "dimensions": ["HOUR", "query", "page"],  # HOUR dimension for hourly breakdown
+            "rowLimit": 25000,
+            "startRow": 0,
+        }
+
+        all_data = []
+
+        while True:
+            try:
+                # Execute the request with retry logic
+                response = await self._make_request("POST", url, json=request_body)
+                data = response.json()
+
+                rows = data.get("rows", [])
+                if not rows:
+                    break
+
+                # Process rows
+                for row in rows:
+                    keys = row.get("keys", [])
+                    if len(keys) >= 3:  # Should have hour, query, page
+                        all_data.append(
+                            {
+                                "hour": keys[0],  # ISO timestamp with timezone
+                                "query": keys[1],
+                                "page": keys[2],
+                                "clicks": row.get("clicks", 0),
+                                "impressions": row.get("impressions", 0),
+                                "ctr": row.get("ctr", 0.0),
+                                "position": row.get("position", 0.0),
+                            }
+                        )
+
+                # Check if more data available
+                if len(rows) < 25000:
+                    break
+
+                request_body["startRow"] += len(rows)
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 403:
+                    print(f"⚠️  No hourly data available for {target_date} (might be too old)")
+                    break
+                else:
+                    raise
+
+        print(f"  Fetched {len(all_data)} hourly records for {target_date}")
+        return all_data
 
 
 class GSCAuthManager:

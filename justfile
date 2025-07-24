@@ -74,6 +74,27 @@ sync-site site_id days='7' sync_mode='skip':
 sync-multiple site_ids days='7' sync_mode='skip':
     @poetry run python sync_multiple.py "{{ site_ids }}" {{ days }} {{ sync_mode }}
 
+# # 為特定網站同步每小時資料。 用法: `just sync-hourly <site_id> [days] [sync_mode]`
+# # 注意：GSC API 限制每小時資料只能取得最近 10 天
+sync-hourly site_id days='2' sync_mode='skip':
+    @poetry run python sync_hourly.py sync {{ site_id }} {{ days }} {{ sync_mode }}
+
+# # 批次同步多個網站的每小時資料。 用法: `just sync-hourly-multiple "1,2,3" [days] [sync_mode]`
+# # days: 1-10 (預設: 2)
+# # sync_mode: skip (預設) | overwrite (覆蓋模式)
+sync-hourly-multiple site_ids days='2' sync_mode='skip':
+    @poetry run python sync_hourly_multiple.py "{{ site_ids }}" {{ days }} {{ sync_mode }}
+
+# # 查看網站同步狀態。 用法: `just sync-status [site_id]`
+sync-status site_id='':
+    @if [ -z "{{ site_id }}" ]; then \
+        echo "📊 所有網站同步狀態:"; \
+        poetry run python -c "import asyncio; from src.database.hybrid import HybridDataStore; async def main(): db = HybridDataStore(); await db.initialize(); sites = await db.get_sites(); print('\\n網站列表:'); [print(f'{s.id:3d}: {s.name} ({s.domain})') for s in sites]; await db.close(); asyncio.run(main())"; \
+    else \
+        echo "📊 網站 {{ site_id }} 同步狀態:"; \
+        poetry run python -c "import asyncio; from src.database.hybrid import HybridDataStore; from datetime import datetime, timedelta; async def main(): db = HybridDataStore(); await db.initialize(); site = await db.get_site_by_id({{ site_id }}); print(f'\\n網站: {site.name if site else \"未找到\"}'); coverage = await db.get_sync_coverage({{ site_id }}, 30) if site else {}; synced = sum(1 for v in coverage.values() if v); print(f'最近 30 天已同步: {synced}/30 天'); await db.close(); asyncio.run(main())"; \
+    fi
+
 # # 執行完整的每日維護程序 (同步、備份、清理)。
 maintenance: _clean-backups
     @echo "\n✅ --- GSC 每日維護程序成功完成 ---"

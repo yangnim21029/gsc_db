@@ -56,7 +56,7 @@ class CacheService:
 
     async def get(self, key: str) -> Any | None:
         """Get value from cache."""
-        if not self.enabled:
+        if not self.enabled or not self.memory_cache:
             return None
 
         # Check L1 (memory)
@@ -76,7 +76,7 @@ class CacheService:
 
     async def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         """Set value in cache."""
-        if not self.enabled:
+        if not self.enabled or not self.memory_cache:
             return
 
         ttl = ttl or self.default_ttl
@@ -90,7 +90,7 @@ class CacheService:
 
     async def delete(self, key: str) -> None:
         """Delete value from cache."""
-        if not self.enabled:
+        if not self.enabled or not self.memory_cache:
             return
 
         await self.memory_cache.delete(key)
@@ -99,7 +99,7 @@ class CacheService:
 
     async def clear(self, prefix: str | None = None) -> None:
         """Clear cache, optionally by prefix."""
-        if not self.enabled:
+        if not self.enabled or not self.memory_cache:
             return
 
         if prefix:

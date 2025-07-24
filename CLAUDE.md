@@ -87,6 +87,37 @@ poetry run python sync.py sync <site_id> [days] [sync_mode]
 poetry run python sync_multiple.py "1,3,17" [days] [sync_mode]
 ```
 
+### Hourly Data Synchronization
+
+GSC API now supports hourly data for the last 10 days. This provides much more granular insights:
+
+```bash
+# Sync hourly data for a single site
+just sync-hourly <site_id> [days] [sync_mode]
+
+# Examples
+just sync-hourly 5 2              # Last 2 days, skip mode
+just sync-hourly 5 7 overwrite    # Last 7 days, overwrite mode
+
+# Batch sync hourly data for multiple sites
+just sync-hourly-multiple "1 3 5" [days] [sync_mode]
+
+# Examples
+just sync-hourly-multiple "4 5 11 16" 1     # Last 1 day
+just sync-hourly-multiple "21,16" 3 overwrite  # Last 3 days, overwrite
+
+# Direct hourly sync scripts
+poetry run python sync_hourly.py list         # List all sites
+poetry run python sync_hourly.py sync 5 2     # Sync site 5, 2 days
+poetry run python sync_hourly_multiple.py "1 2 3" 1  # Multiple sites
+```
+
+**Hourly Data Notes:**
+- Only available for the last 10 days (GSC API limitation)
+- Provides hour-by-hour breakdown of queries, pages, and performance
+- Useful for understanding daily traffic patterns
+- Data includes timezone information (Pacific time)
+
 ### Site Management
 ```bash
 # List all sites

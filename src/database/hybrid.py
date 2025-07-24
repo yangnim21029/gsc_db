@@ -4,7 +4,7 @@ import asyncio
 import sqlite3
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -268,6 +268,73 @@ class HybridDataStore:
                     stats["inserted"] += 1
 
         return stats
+
+    async def insert_hourly_data(self, data: list[dict], mode: str = "skip") -> dict[str, int]:
+        """
+        Insert hourly ranking data with skip or overwrite mode.
+        """
+        stats = {"inserted": 0, "updated": 0, "skipped": 0}
+
+        async with self.transaction() as conn:
+            for record in data:
+                if mode == "skip":
+                    # Try to insert, skip if exists
+                    try:
+                        await conn.execute(
+                            """
+                            INSERT INTO hourly_rankings
+                            (site_id, date, hour, query, page, position, clicks, impressions, ctr)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                record["site_id"],
+                                record["date"],
+                                record["hour"],
+                                record["query"],
+                                record["page"],
+                                record["position"],
+                                record["clicks"],
+                                record["impressions"],
+                                record["ctr"],
+                            ),
+                        )
+                        stats["inserted"] += 1
+                    except sqlite3.IntegrityError:
+                        stats["skipped"] += 1
+                else:  # overwrite mode
+                    await conn.execute(
+                        """
+                        INSERT OR REPLACE INTO hourly_rankings
+                        (site_id, date, hour, query, page, position, clicks, impressions, ctr)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            record["site_id"],
+                            record["date"],
+                            record["hour"],
+                            record["query"],
+                            record["page"],
+                            record["position"],
+                            record["clicks"],
+                            record["impressions"],
+                            record["ctr"],
+                        ),
+                    )
+                    stats["inserted"] += 1
+
+        return stats
+
+    async def delete_hourly_data_for_date(self, site_id: int, date: date) -> None:
+        """Delete all hourly data for a specific site and date."""
+        async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
+
+            await self._sqlite_conn.execute(
+                "DELETE FROM hourly_rankings WHERE site_id = ? AND date = ?",
+                (site_id, date.isoformat()),
+            )
+            await self._sqlite_conn.commit()
 
     # Analytics with DuckDB
     async def analyze_performance_trends(self, site_id: int, days: int) -> pl.DataFrame:

@@ -121,9 +121,11 @@ def _sync_single_day(
     day_stats = {"inserted": 0, "updated": 0, "skipped": 0}
 
     try:
+        logger.info(f"開始呼叫 GSC API：{site['name']} - {date}")
         data_stream = client.stream_site_data(
             site_url=site["domain"], start_date=date, end_date=date
         )
+        logger.info(f"GSC API 回應成功：{site['name']} - {date}")
 
         for device, search_type, chunk in data_stream:
             chunk_stats = db.save_data_chunk(

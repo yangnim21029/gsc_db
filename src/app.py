@@ -58,6 +58,10 @@ app.add_typer(commands.site_app, name="site")
 app.add_typer(commands.sync_app, name="sync")
 app.add_typer(commands.analyze_app, name="analyze")
 
+# 4. 註冊獨立的指令
+app.command()(commands.network_check)
+app.command()(commands.wait_network)
+
 
 def main():
     """Entry point for the gsc-cli command."""

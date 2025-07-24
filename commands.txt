@@ -1,0 +1,19 @@
+poetry run python -m src.app sync daily --all-sites --days 183 --sync-mode skip
+
+poetry run python -m src.app sync daily --site-id 4 --days 3
+
+poetry run gsc-cli site add "sc-domain:holidaysmart.io"
+
+poetry run gsc-cli site add "sc-domain:businessfocus.io"
+
+poetry run gsc-cli site list
+
+poetry run uvicorn src.web.api:app --reload --host 127.0.0.1 --port 8000
+
+git pull
+
+ngrok http --url=slug-unique-possum.ngrok-free.app 8000
+
+poetry run python -m src.app auth login
+
+poetry run python -m src.app network-check

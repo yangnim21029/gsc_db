@@ -143,33 +143,51 @@
             const [loading, setLoading] = useState(false);
             const [dateRange, setDateRange] = useState(30);
             const [error, setError] = useState(null);
+            const fetchTimeoutRef = useRef(null);
 
             // Fetch sites on mount
             useEffect(() => {
                 fetchSites();
             }, []);
 
-            // Fetch data when site or date range changes
+            // Fetch data when site or date range changes with debouncing
             useEffect(() => {
                 if (selectedSite) {
-                    fetchDashboardData();
+                    // Clear any pending timeout
+                    if (fetchTimeoutRef.current) {
+                        clearTimeout(fetchTimeoutRef.current);
+                    }
+                    
+                    // Set a new timeout to prevent rapid re-fetching
+                    fetchTimeoutRef.current = setTimeout(() => {
+                        fetchDashboardData();
+                    }, 300); // 300ms debounce
                 }
-            }, [selectedSite, dateRange]);
+                
+                return () => {
+                    if (fetchTimeoutRef.current) {
+                        clearTimeout(fetchTimeoutRef.current);
+                    }
+                };
+            }, [selectedSite, dateRange]); // eslint-disable-line react-hooks/exhaustive-deps
 
             const fetchSites = async () => {
                 try {
                     const response = await axios.get(`${API_BASE_URL}/api/v1/sites`);
                     setSites(response.data);
-                    if (response.data.length > 0 && !selectedSite) {
+                    // Only set initial site if there's no selected site yet
+                    if (response.data.length > 0 && selectedSite === '') {
                         setSelectedSite(response.data[0].domain);
                     }
                 } catch (err) {
-                    setError('Failed to fetch sites');
+                    setError('Failed to fetch sites. Is the API server running on http://localhost:8000?');
                     console.error(err);
                 }
             };
 
             const fetchDashboardData = async () => {
+                if (!selectedSite || loading) return; // Prevent concurrent requests
+                
                 setLoading(true);
                 setError(null);
 

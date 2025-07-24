@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,10 +17,16 @@
 
     <!-- Custom styles -->
     <style>
-        [v-cloak] { display: none; }
-        .highlight { background-color: #fef3c7; }
+        [v-cloak] {
+            display: none;
+        }
+
+        .highlight {
+            background-color: #fef3c7;
+        }
     </style>
 </head>
+
 <body class="bg-gray-50">
     <div id="app" v-cloak class="container mx-auto px-4 py-8 max-w-7xl">
         <!-- Header -->
@@ -34,9 +41,8 @@
                 <!-- Site Selection -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Site</label>
-                    <select v-model="searchParams.hostname"
-                            @change="onSiteChange"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <select v-model="searchParams.hostname" @change="onSiteChange"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                         <option value="">Select a site...</option>
                         <option v-for="site in sites" :key="site.id" :value="site.domain">
                             {{ site.name }}
@@ -47,39 +53,33 @@
                 <!-- Date Range -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                    <input type="date"
-                           v-model="searchParams.date_from"
-                           :max="today"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <input type="date" v-model="searchParams.date_from" :max="today"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-                    <input type="date"
-                           v-model="searchParams.date_to"
-                           :max="today"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <input type="date" v-model="searchParams.date_to" :max="today"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
 
                 <!-- Search Query -->
                 <div class="lg:col-span-2">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Search Queries</label>
                     <div class="flex gap-2">
-                        <input type="text"
-                               v-model="queryInput"
-                               @keypress.enter="addQuery"
-                               placeholder="Enter query and press Enter (e.g., 理髮, 香港)"
-                               class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                        <button @click="addQuery"
-                                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        <input type="text" v-model="queryInput" @keypress.enter="addQuery"
+                            placeholder="Enter query and press Enter (e.g., 理髮, 香港)"
+                            class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <button @click="addQuery" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                             Add
                         </button>
                     </div>
                     <div class="flex flex-wrap gap-2 mt-2">
                         <span v-for="(query, index) in searchParams.queries" :key="index"
-                              class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm flex items-center">
+                            class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm flex items-center">
                             {{ query }}
-                            <button @click="removeQuery(index)" class="ml-2 text-blue-600 hover:text-blue-800">×</button>
+                            <button @click="removeQuery(index)"
+                                class="ml-2 text-blue-600 hover:text-blue-800">×</button>
                         </span>
                     </div>
                 </div>
@@ -88,31 +88,27 @@
                 <div class="flex items-end gap-4">
                     <label class="flex items-center">
                         <input type="checkbox" v-model="searchParams.exact_match"
-                               class="mr-2 h-4 w-4 text-blue-600 rounded">
+                            class="mr-2 h-4 w-4 text-blue-600 rounded">
                         <span class="text-sm text-gray-700">Exact Match</span>
                     </label>
 
                     <div class="flex-1">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Limit</label>
-                        <input type="number" v-model.number="searchParams.limit"
-                               min="10" max="1000"
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <input type="number" v-model.number="searchParams.limit" min="10" max="1000"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                     </div>
                 </div>
             </div>
 
             <!-- Quick Date Ranges -->
             <div class="mt-4 flex gap-2">
-                <button @click="setDateRange(7)"
-                        class="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm">
+                <button @click="setDateRange(7)" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm">
                     Last 7 days
                 </button>
-                <button @click="setDateRange(30)"
-                        class="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm">
+                <button @click="setDateRange(30)" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm">
                     Last 30 days
                 </button>
-                <button @click="setDateRange(90)"
-                        class="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm">
+                <button @click="setDateRange(90)" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm">
                     Last 90 days
                 </button>
             </div>
@@ -120,25 +116,26 @@
             <!-- Search Button -->
             <div class="mt-6 flex justify-between items-center">
                 <button @click="search"
-                        :disabled="loading || !searchParams.hostname || searchParams.queries.length === 0"
-                        class="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                    :disabled="loading || !searchParams.hostname || searchParams.queries.length === 0"
+                    class="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
                     <span v-if="!loading">Search</span>
                     <span v-else class="flex items-center">
                         <svg class="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+                                fill="none"></circle>
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                            </path>
                         </svg>
                         Searching...
                     </span>
                 </button>
 
                 <div v-if="results.data.length > 0" class="flex gap-2">
-                    <button @click="exportCSV"
-                            class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                    <button @click="exportCSV" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
                         Export CSV
                     </button>
-                    <button @click="exportJSON"
-                            class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+                    <button @click="exportJSON" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
                         Export JSON
                     </button>
                 </div>
@@ -158,7 +155,8 @@
                 </div>
                 <div>
                     <h3 class="text-sm font-medium text-gray-500">Total Impressions</h3>
-                    <p class="text-2xl font-bold text-gray-900">{{ results.aggregations.impressions.toLocaleString() }}</p>
+                    <p class="text-2xl font-bold text-gray-900">{{ results.aggregations.impressions.toLocaleString() }}
+                    </p>
                 </div>
                 <div>
                     <h3 class="text-sm font-medium text-gray-500">Avg CTR</h3>
@@ -172,10 +170,8 @@
             <div class="p-6">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-lg font-semibold">Search Results</h2>
-                    <input type="text"
-                           v-model="filterText"
-                           placeholder="Filter results..."
-                           class="px-4 py-2 border border-gray-300 rounded-lg text-sm">
+                    <input type="text" v-model="filterText" placeholder="Filter results..."
+                        class="px-4 py-2 border border-gray-300 rounded-lg text-sm">
                 </div>
 
                 <div class="overflow-x-auto">
@@ -200,7 +196,8 @@
                                 <th @click="sortBy('impressions')"
                                     class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
                                     Impressions
-                                    <span v-if="sortField === 'impressions'">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                                    <span v-if="sortField === 'impressions'">{{ sortOrder === 'asc' ? '↑' : '↓'
+                                        }}</span>
                                 </th>
                                 <th @click="sortBy('ctr')"
                                     class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
@@ -220,10 +217,14 @@
                                 <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" :title="row.page">
                                     {{ row.page ? row.page.replace(/^https?:\/\/[^\/]+/, '') : '' }}
                                 </td>
-                                <td class="px-6 py-4 text-sm text-gray-900 text-right">{{ row.clicks.toLocaleString() }}</td>
-                                <td class="px-6 py-4 text-sm text-gray-900 text-right">{{ row.impressions.toLocaleString() }}</td>
-                                <td class="px-6 py-4 text-sm text-gray-900 text-right">{{ (row.ctr * 100).toFixed(2) }}%</td>
-                                <td class="px-6 py-4 text-sm text-gray-900 text-right">{{ row.position.toFixed(1) }}</td>
+                                <td class="px-6 py-4 text-sm text-gray-900 text-right">{{ row.clicks.toLocaleString() }}
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-900 text-right">{{
+                                    row.impressions.toLocaleString() }}</td>
+                                <td class="px-6 py-4 text-sm text-gray-900 text-right">{{ (row.ctr * 100).toFixed(2) }}%
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-900 text-right">{{ row.position.toFixed(1) }}
+                                </td>
                             </tr>
                         </tbody>
                     </table>
@@ -443,4 +444,5 @@
         }).mount('#app');
     </script>
 </body>
+
 </html>

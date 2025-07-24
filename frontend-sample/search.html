@@ -214,8 +214,15 @@
                         <tbody class="bg-white divide-y divide-gray-200">
                             <tr v-for="row in filteredResults" :key="row.query + row.page" class="hover:bg-gray-50">
                                 <td class="px-6 py-4 text-sm text-gray-900" v-html="highlightText(row.query)"></td>
-                                <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" :title="row.page">
-                                    {{ row.page ? row.page.replace(/^https?:\/\/[^\/]+/, '') : '' }}
+                                <td class="px-6 py-4 text-sm text-gray-500 max-w-xs">
+                                    <a v-if="row.page" 
+                                       :href="row.page" 
+                                       target="_blank"
+                                       :title="decodeURI(row.page)"
+                                       class="text-blue-600 hover:text-blue-800 hover:underline block truncate">
+                                        {{ formatPageUrl(row.page) }}
+                                    </a>
+                                    <span v-else>-</span>
                                 </td>
                                 <td class="px-6 py-4 text-sm text-gray-900 text-right">{{ row.clicks.toLocaleString() }}
                                 </td>
@@ -417,7 +424,7 @@
                     const headers = ['Query', 'Page', 'Clicks', 'Impressions', 'CTR', 'Position'];
                     const rows = this.filteredResults.map(row => [
                         row.query || '',
-                        row.page || '',
+                        row.page ? decodeURI(row.page) : '',  // Decode URL for CSV export
                         row.clicks,
                         row.impressions,
                         (row.ctr * 100).toFixed(2) + '%',
@@ -456,6 +463,28 @@
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
+                },
+
+                formatPageUrl(url) {
+                    if (!url) return '';
+                    
+                    try {
+                        // Decode the URL to show Chinese characters properly
+                        const decodedUrl = decodeURI(url);
+                        
+                        // Remove the protocol and domain to show only the path
+                        const pathOnly = decodedUrl.replace(/^https?:\/\/[^\/]+/, '');
+                        
+                        // If path is too long, truncate it
+                        if (pathOnly.length > 50) {
+                            return pathOnly.substring(0, 47) + '...';
+                        }
+                        
+                        return pathOnly || '/';
+                    } catch (e) {
+                        // If decoding fails, return the original URL without protocol
+                        return url.replace(/^https?:\/\/[^\/]+/, '') || '/';
+                    }
                 }
             }
         }).mount('#app');

@@ -117,7 +117,7 @@ def create_app() -> Litestar:
         cors_config=cors_config,  # Added CORS configuration to fix Swagger fetch errors
         openapi_config=openapi_config,
         lifespan=[lifespan],
-        debug=False,
+        debug=True,  # Enable debug for better error messages
     )
 
     # Note: Prometheus metrics would be mounted here if needed

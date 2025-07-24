@@ -659,24 +659,41 @@ class HybridDataStore:
 
         data = []
         for row in df.to_dicts():
+            # DEBUG: 處理可能的 None 值
+            # weighted_position 可能為 None，特別是當沒有數據時
+            weighted_pos = row.get("weighted_position")
+            if weighted_pos is None:
+                # 如果沒有 position 數據，使用預設值 0.0
+                print(f"[WARNING] weighted_position is None for query: {row.get('query')}")
+                weighted_pos = 0.0
+                
             item = RankingDataItem(
                 query=row.get("query"),
                 page=row.get("page"),
                 clicks=int(row["clicks"]),
                 impressions=int(row["impressions"]),
                 ctr=round(float(row["ctr"]), 4),
-                position=round(float(row["weighted_position"]), 2),
+                position=round(float(weighted_pos), 2),  # 使用處理過的值
                 rank_by_clicks=int(row.get("rank_by_clicks", 0)),
                 percentile_clicks=float(row.get("percentile_clicks", 0.0)),
             )
             data.append(item)
 
         # Calculate aggregations
+        # DEBUG: 處理聚合計算時的 None 值
+        total_clicks = int(df["clicks"].sum())
+        total_impressions = int(df["impressions"].sum())
+        
+        # 計算平均 position 時需要處理 None 值
+        position_mean = df["weighted_position"].mean()
+        if position_mean is None:
+            position_mean = 0.0
+            
         aggregations = PerformanceMetrics(
-            clicks=int(df["clicks"].sum()),
-            impressions=int(df["impressions"].sum()),
-            ctr=float(df["clicks"].sum() / max(df["impressions"].sum(), 1)),
-            position=float(df["weighted_position"].mean()),
+            clicks=total_clicks,
+            impressions=total_impressions,
+            ctr=float(total_clicks / max(total_impressions, 1)),
+            position=float(position_mean),
         )
 
         return {"data": data, "total": len(df), "aggregations": aggregations}

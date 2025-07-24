@@ -75,15 +75,24 @@ async def get_ranking_data(
         "group_by": ["query"]
     }
     """
+    # DEBUG: 如果遇到 500 錯誤，首先檢查這裡
+    # 常見問題：hostname 為空字串 "" 或 None
+    print(f"[DEBUG] ranking-data request - hostname: '{data.hostname}', site_id: {data.site_id}")
+    
     # Determine site_id from hostname if provided
     site_id = data.site_id
     if not site_id and data.hostname:
+        # DEBUG: 檢查 hostname 是否正確傳入
+        print(f"[DEBUG] Looking up site for hostname: {data.hostname}")
         site = await db.get_site_by_hostname(data.hostname)
         if not site:
+            # ERROR: 這是最常見的錯誤 - 找不到對應的網站
             raise ValueError(f"Site not found for hostname: {data.hostname}")
         site_id = site.id
+        print(f"[DEBUG] Found site_id: {site_id} for hostname: {data.hostname}")
 
     if not site_id:
+        # ERROR: 既沒有 site_id 也沒有 hostname
         raise ValueError("Either site_id or hostname must be provided")
 
     # Try cache first if enabled

@@ -356,20 +356,37 @@
                         alert('Please select a site and add at least one search query');
                         return;
                     }
+                    
+                    if (!this.searchParams.date_from || !this.searchParams.date_to) {
+                        alert('Please select a date range');
+                        return;
+                    }
 
                     this.loading = true;
                     this.searched = true;
 
                     try {
+                        console.log('Sending search request:', this.searchParams);
+                        
                         const response = await axios.post(
                             `${this.apiBaseUrl}/api/v1/analytics/ranking-data`,
                             this.searchParams
                         );
 
                         this.results = response.data;
+                        console.log('Search results:', this.results);
                     } catch (error) {
                         console.error('Search failed:', error);
-                        alert('Search failed. Please check your parameters and try again.');
+                        
+                        // Better error message
+                        let errorMessage = 'Search failed. ';
+                        if (error.response && error.response.data) {
+                            errorMessage += error.response.data.detail || error.response.data.message || 'Please check your parameters.';
+                        } else {
+                            errorMessage += 'Please check if the API server is running.';
+                        }
+                        
+                        alert(errorMessage);
                     } finally {
                         this.loading = false;
                     }

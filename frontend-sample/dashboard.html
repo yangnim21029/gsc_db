@@ -6,9 +6,10 @@
     <title>GSC Dashboard - Advanced React Example</title>
     
     <!-- 
-        PERFORMANCE NOTE: This dashboard loads multiple data endpoints simultaneously.
-        For large sites, it may be slow with 30+ days of data.
-        Consider using search.html for more focused analysis.
+        PERFORMANCE NOTE: This dashboard now supports:
+        - URL filtering to focus on specific page types
+        - Adjustable result limits for better performance
+        - Only fetches data when you click "Load Dashboard"
     -->
 
     <!-- Tailwind CSS (for development only - use PostCSS in production) -->
@@ -149,6 +150,8 @@
             const [loading, setLoading] = useState(false);
             const [dateRange, setDateRange] = useState(30);
             const [error, setError] = useState(null);
+            const [pageFilter, setPageFilter] = useState(''); // URL filter for pages
+            const [resultLimit, setResultLimit] = useState(10); // Number of results to show
 
             // Fetch sites on mount
             useEffect(() => {
@@ -187,14 +190,14 @@
                             date_from: formatDate(subDays(new Date(), dateRange), 'yyyy-MM-dd'),
                             date_to: formatDate(new Date(), 'yyyy-MM-dd'),
                             group_by: ['query'],
-                            limit: 10
+                            limit: resultLimit
                         }),
-                        // Top pages - limit to 10 for performance
+                        // Top pages - with optional URL filter
                         axios.post(`${API_BASE_URL}/api/v1/page-keyword-performance/`, {
                             hostname: selectedSite,
                             days: dateRange,
-                            limit: 10,  // Only get top 10 pages for performance
-                            // query: '/article'  // Optional: filter by URL pattern like '/article', '/tag', etc.
+                            limit: resultLimit,
+                            ...(pageFilter && { query: pageFilter }) // Only add query if filter is set
                         })
                     ]);
 
@@ -260,6 +263,36 @@
                                         <option value={14}>Last 14 days</option>
                                         <option value={30}>Last 30 days</option>
                                         <option value={90}>Last 90 days</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Page Filter (Optional)</label>
+                                    <select
+                                        value={pageFilter}
+                                        onChange={(e) => setPageFilter(e.target.value)}
+                                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="">All Pages</option>
+                                        <option value="/article">/article - Article Pages</option>
+                                        <option value="/tag">/tag - Tag Pages</option>
+                                        <option value="/category">/category - Category Pages</option>
+                                        <option value="/news">/news - News Section</option>
+                                        <option value="/author">/author - Author Pages</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Results Limit</label>
+                                    <select
+                                        value={resultLimit}
+                                        onChange={(e) => setResultLimit(Number(e.target.value))}
+                                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value={5}>Top 5</option>
+                                        <option value={10}>Top 10</option>
+                                        <option value={20}>Top 20</option>
+                                        <option value={50}>Top 50</option>
                                     </select>
                                 </div>
 
@@ -390,7 +423,9 @@
                                     {/* Top Pages */}
                                     <div className="bg-white rounded-lg shadow p-6">
                                         <div className="flex justify-between items-center mb-4">
-                                            <h2 className="text-lg font-semibold">Top Pages</h2>
+                                            <h2 className="text-lg font-semibold">
+                                                Top Pages {pageFilter && <span className="text-sm font-normal text-gray-500">({pageFilter})</span>}
+                                            </h2>
                                             <button
                                                 onClick={() => exportData(topPages, 'top_pages')}
                                                 className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm"

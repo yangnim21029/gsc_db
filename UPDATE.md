@@ -1,5 +1,73 @@
 # GSC Database Update History
 
+## Version 2.3.0 - API Modularization & Query Search (2025-07-24)
+
+### 🎯 API 模組化重構與查詢搜尋功能
+
+將龐大的 API 檔案重構為模組化結構，並新增支援部分匹配的查詢搜尋功能。
+
+#### 主要變更
+
+1. **API 模組化**
+   - 將 800+ 行的 `api.py` 拆分為模組化結構
+   - 新目錄結構：
+     ```
+     src/web/api/
+     ├── main.py              # 主應用程式
+     ├── dependencies/        # 共享依賴
+     └── routers/            # 各領域路由
+         ├── analytics.py    # 分析端點
+         ├── health.py       # 健康檢查
+         ├── performance.py  # 效能數據
+         ├── queries.py      # 查詢相關
+         ├── sites.py        # 站點管理
+         └── sync.py         # 同步狀態
+     ```
+
+2. **新增查詢搜尋端點**
+   - 端點：`GET /api/v1/sites/{site_id}/queries/search`
+   - 支援部分匹配（LIKE 查詢）
+   - 範例：搜尋 "是" 會找到 "什麼是"、"是不是" 等
+   - 解決了原本只有完全匹配的限制
+
+3. **保持向後相容**
+   - 原始 `src/web/api.py` 作為相容層
+   - 所有現有 import 繼續運作
+   - API 路徑保持不變
+
+4. **改進的文件**
+   - 新增 `src/web/api/README.md` 說明架構
+   - 更清楚的查詢匹配行為說明
+   - 區分完全匹配與部分匹配端點
+
+#### 新功能詳解
+
+##### 查詢搜尋端點
+```bash
+# 搜尋包含 "理髮" 的所有查詢
+GET /api/v1/sites/1/queries/search?search_term=理髮&start_date=2025-07-01&end_date=2025-07-15
+
+# 回傳結果包含：
+- "男士理髮"
+- "男士 理髮"
+- "理髮店"
+- "哪裡理髮好"
+```
+
+##### 與原有端點的差異
+- **ranking-data** (POST)：使用完全匹配
+  - `queries: ["男士 理髮"]` 只會找到完全等於 "男士 理髮" 的查詢
+- **queries/search** (GET)：使用部分匹配
+  - `search_term=理髮` 會找到所有包含 "理髮" 的查詢
+
+#### 技術改進
+- 更好的關注點分離
+- 易於維護和擴展
+- 每個路由處理特定領域
+- 統一的依賴注入管理
+
+---
+
 ## Version 2.2.0 - Standardized Multi-Process Support (2025-07-24)
 
 ### 🎯 標準化多程序支援

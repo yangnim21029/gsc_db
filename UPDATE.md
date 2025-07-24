@@ -1,5 +1,50 @@
 # GSC Database Update History
 
+## Version 2.2.0 - Standardized Multi-Process Support (2025-07-24)
+
+### 🎯 標準化多程序支援
+
+將多程序支援標準化為預設實作，移除了 `_multiprocess` 後綴檔案。
+
+#### 主要變更
+
+1. **統一的容器實作**
+   - `containers.py` 現在預設使用 `ProcessSafeDatabase`
+   - 移除了 `containers_multiprocess.py`（功能已整合）
+   - 所有應用都使用相同的 import：`from src.containers import Container`
+
+2. **統一的 API 實作**
+   - `api.py` 現在包含多程序支援功能
+   - 新增了 startup/shutdown 事件處理
+   - 新增了 `/health` 端點顯示程序資訊
+   - 移除了 `api_multiprocess.py`（功能已整合）
+
+3. **簡化的使用方式**
+   - 不再需要選擇不同的容器版本
+   - 多程序功能自動啟用
+   - 保持向後相容性
+
+4. **更新的文件**
+   - 更新了所有範例程式碼
+   - 簡化了部署指南
+   - 統一了 import 路徑
+
+#### 升級指南
+
+如果你的程式碼使用了舊的 import：
+```python
+# 舊的方式
+from src.containers_multiprocess import MultiProcessContainer as Container
+```
+
+請更新為：
+```python
+# 新的方式
+from src.containers import Container
+```
+
+---
+
 ## Version 2.1.0 - Multi-Process Support (2025-07-24)
 
 ### 🎯 主要更新：解決 SQLite 多程序鎖定問題
@@ -60,23 +105,20 @@
 
 #### 使用方式
 
-##### 單程序應用（保持原有行為）
+所有應用現在都使用標準的 Container，它已內建多程序支援：
 ```python
 from src.containers import Container
 ```
 
-##### 多程序應用（新功能）
-```python
-from src.containers_multiprocess import MultiProcessContainer as Container
-```
+多程序功能會自動啟用，無需額外配置。
 
 ##### 部署範例
 ```bash
 # Gunicorn 多 worker
-gunicorn -w 4 "src.web.api_multiprocess:app"
+gunicorn -w 4 "src.web.api:app"
 
 # Uvicorn 多程序
-uvicorn src.web.api_multiprocess:app --workers 4
+uvicorn src.web.api:app --workers 4
 ```
 
 #### 效能改善

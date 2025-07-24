@@ -5,10 +5,10 @@ This module defines a dependency injection container using the `dependency-injec
 library. It centralizes the instantiation and wiring of services, making it
 easy to manage dependencies and share service instances across the application
 (both CLI and API).
-"""
 
-import sqlite3
-import threading
+This container now uses ProcessSafeDatabase by default to support multi-process
+deployments while maintaining backward compatibility with single-process applications.
+"""
 
 from dependency_injector import containers, providers
 
@@ -17,42 +17,25 @@ from .config import settings
 from .jobs.bulk_data_synchronizer import BulkDataSynchronizer
 from .services.analysis_service import AnalysisService
 from .services.data_aggregation_service import DataAggregationService
-from .services.database import Database
 from .services.gsc_client import GSCClient
 from .services.hourly_database import HourlyDatabase
+from .services.process_safe_database import ProcessSafeDatabase
 from .services.site_service import SiteService
 
 
 class Container(containers.DeclarativeContainer):
-    """應用程式依賴注入容器"""
+    """應用程式依賴注入容器 - 支援多程序"""
 
     # --- Configuration Provider ---
-    # 將 Pydantic 設定模型包裝成一個提供者，以便在整個容器中注入設定值
     config = providers.Configuration()
     config.from_dict(settings.model_dump())
 
     # --- Core Services ---
-    # 1. 創建一個全域唯一的 lock 實例 (使用 RLock 避免死鎖)
-    db_lock = providers.Singleton(threading.RLock)
-
-    # 2. 創建一個全域唯一的資料庫連接資源
-    #    使用 Singleton provider 確保整個應用程式生命週期中只有一個連接。
-    #    在多線程環境下共享連接時需要 check_same_thread=False
-    db_connection = providers.Singleton(
-        sqlite3.connect,
-        config.paths.database_path,
-        check_same_thread=False,
-        timeout=30.0,  # 增加超時時間以避免鎖定錯誤
-    )
-
-    # 3. 設置 row_factory 以便將行轉換為字典
-    db_connection.add_attributes(row_factory=sqlite3.Row)
-
-    # 4. 將創建好的 lock 和 connection 注入到 Database 服務中
+    # 使用 ProcessSafeDatabase 來支援多程序
+    # ProcessSafeDatabase 會自動為每個程序創建獨立的連接
     database = providers.Singleton(
-        Database,
-        connection=db_connection,
-        lock=db_lock,
+        ProcessSafeDatabase,
+        database_path=config.paths.database_path,
     )
 
     gsc_client = providers.Singleton(

@@ -4,14 +4,10 @@ GSC-CLI's FastAPI Application
 This module defines the API endpoints and connects them with the application's
 service layer. It acts as the "storefront" for the data, providing a standard
 HTTP interface for future AI Agents or Web UIs.
-
-This API now supports multi-process deployments by default while maintaining
-backward compatibility with single-process applications.
 """
 
 import csv
 import io
-import os
 from datetime import datetime
 from typing import List
 
@@ -30,31 +26,9 @@ from . import schemas
 container = Container()
 app = FastAPI(
     title="GSC-CLI API",
-    description="API for accessing and managing Google Search Console data (Multi-Process Ready).",
-    version="0.2.0",
+    description="API for accessing and managing Google Search Console data.",
+    version="0.1.0",
 )
-
-
-# Add startup event to log process information
-@app.on_event("startup")
-async def startup_event():
-    """Log startup information including process ID"""
-    print(f"FastAPI starting in process {os.getpid()}")
-    # Ensure database is initialized for this process
-    db = container.database()
-    if hasattr(db, "get_connection_info"):
-        info = db.get_connection_info()
-        print(f"Database connection info: {info}")
-
-
-# Add shutdown event to clean up connections
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up database connections on shutdown"""
-    print(f"FastAPI shutting down in process {os.getpid()}")
-    db = container.database()
-    if hasattr(db, "close_all_connections"):
-        db.close_all_connections()
 
 
 # Dependency provider functions for FastAPI
@@ -76,28 +50,6 @@ def get_data_aggregation_service() -> DataAggregationService:
 def get_database() -> Database:
     """Get Database instance from container"""
     return container.database()
-
-
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    """Health check endpoint that also shows process information"""
-    db = get_database()
-    connection_ok = db.check_connection()
-
-    response = {
-        "status": "healthy" if connection_ok else "unhealthy",
-        "process_id": os.getpid(),
-        "database_connected": connection_ok,
-    }
-
-    if hasattr(db, "get_connection_info"):
-        response["connection_info"] = db.get_connection_info()
-
-    if not connection_ok:
-        raise HTTPException(status_code=503, detail=response)
-
-    return response
 
 
 @app.get("/api/v1/sites/", response_model=List[schemas.Site], tags=["Sites"])

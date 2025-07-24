@@ -24,14 +24,11 @@ WAL 模式的優點：
 
 ### 2. 程序安全的連線管理
 
-使用 `ProcessSafeDatabase` 類別來自動管理每個程序的連線：
+`ProcessSafeDatabase` 已經整合到標準的 Container 中，會自動為每個程序管理獨立的連線：
 
 ```python
-# 單程序應用（CLI、單一 worker）
+# 所有應用都使用相同的 Container（已支援多程序）
 from src.containers import Container
-
-# 多程序應用（Gunicorn、多 worker）
-from src.containers_multiprocess import MultiProcessContainer as Container
 ```
 
 ### 3. 部署配置
@@ -47,7 +44,7 @@ timeout = 120
 keepalive = 5
 
 # 啟動 Gunicorn
-gunicorn -c gunicorn_config.py "src.web.api_multiprocess:app"
+gunicorn -c gunicorn_config.py "src.web.api:app"
 ```
 
 #### Uvicorn 配置
@@ -57,7 +54,7 @@ gunicorn -c gunicorn_config.py "src.web.api_multiprocess:app"
 uvicorn src.web.api:app --reload
 
 # 多程序（生產環境）
-uvicorn src.web.api_multiprocess:app --workers 4 --host 0.0.0.0 --port 8000
+uvicorn src.web.api:app --workers 4 --host 0.0.0.0 --port 8000
 ```
 
 ### 4. 程式碼範例
@@ -65,8 +62,8 @@ uvicorn src.web.api_multiprocess:app --workers 4 --host 0.0.0.0 --port 8000
 #### 在 Web API 中使用
 
 ```python
-# src/web/api_multiprocess.py
-from src.containers_multiprocess import MultiProcessContainer as Container
+# src/web/api.py
+from src.containers import Container
 
 container = Container()
 app = FastAPI()
@@ -83,7 +80,7 @@ async def list_sites(db = Depends(get_database)):
 
 ```python
 from multiprocessing import Process
-from src.containers_multiprocess import MultiProcessContainer as Container
+from src.containers import Container
 
 def background_sync(site_id):
     container = Container()
@@ -109,7 +106,7 @@ p.start()
 #### Q: 還是遇到 "database is locked" 錯誤？
 
 A: 檢查以下項目：
-- 確認使用了多程序版本的容器
+- 確認資料庫已啟用 WAL 模式
 - 增加 `busy_timeout` 值
 - 檢查是否有長時間執行的交易
 - 考慮使用連線池進行大量並發讀取

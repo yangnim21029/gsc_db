@@ -10,9 +10,8 @@ import multiprocessing
 import time
 from concurrent.futures import ProcessPoolExecutor
 
-# 根據你的部署模式選擇適當的容器
-# from src.containers import Container  # 單程序版本
-from src.containers_multiprocess import MultiProcessContainer as Container  # 多程序版本
+# 使用標準容器（已支援多程序）
+from src.containers import Container
 
 
 def worker_read_sites(worker_id: int):

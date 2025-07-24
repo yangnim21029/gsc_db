@@ -1,10 +1,8 @@
 """Litestar application with high-performance API endpoints."""
 
-
 from contextlib import asynccontextmanager
-from typing import Any
 
-from litestar import Litestar, Request, get, post
+from litestar import Litestar, get
 from litestar.config.compression import CompressionConfig
 from litestar.config.cors import CORSConfig
 from litestar.datastructures import State
@@ -14,17 +12,12 @@ from litestar.openapi.plugins import SwaggerRenderPlugin
 
 from ..config import get_settings
 from ..database.hybrid import HybridDataStore
-from ..models import (
-    RankingDataRequest,
-    RankingDataResponse,
-    Site,
-    SyncStatusResponse,
-)
 from ..services.cache import CacheService
+from .diagnostics import diagnostics_router
+from .performance import performance_router
+
 # from ..services.monitoring import setup_monitoring
 from .routes import analytics_router, sites_router, sync_router
-from .performance import performance_router
-from .diagnostics import diagnostics_router
 
 
 @asynccontextmanager
@@ -32,12 +25,12 @@ async def lifespan(app: Litestar):
     """Application lifespan handler."""
     # Startup
     settings = get_settings()
-    
+
     # Initialize database
     db = HybridDataStore()
     await db.initialize()
     app.state.db = db
-    
+
     # Initialize cache if enabled
     if settings.enable_cache:
         cache = CacheService(settings.redis_url)
@@ -45,13 +38,13 @@ async def lifespan(app: Litestar):
         app.state.cache = cache
     else:
         app.state.cache = None
-    
+
     # Setup monitoring (disabled to avoid annoying warnings)
     # if settings.enable_telemetry:
     #     setup_monitoring()
-    
+
     yield
-    
+
     # Shutdown
     await db.close()
     if app.state.cache:
@@ -71,41 +64,41 @@ async def get_cache(state: State) -> CacheService | None:
 def create_app() -> Litestar:
     """
     Create and configure Litestar application.
-    
+
     Note: While this API supports high concurrency (tested 808 RPS),
     GSC data sync operations must be sequential due to API limitations.
     """
     settings = get_settings()
-    
+
     # Configure compression
     compression_config = CompressionConfig(
-        backend="gzip",
-        minimum_size=1000,
-        gzip_compress_level=6,
-        exclude=["/metrics", "/health"]
+        backend="gzip", minimum_size=1000, gzip_compress_level=6, exclude=["/metrics", "/health"]
     )
-    
+
     # Configure CORS to fix Swagger fetch errors
     cors_config = CORSConfig(
         allow_origins=["*"],  # Allow all origins for development
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
-        allow_credentials=True
+        allow_credentials=True,
     )
-    
+
     # Configure OpenAPI
     openapi_config = OpenAPIConfig(
         title="GSC Database Manager API",
         version="2.0.0",
         description="Modern API for Google Search Console data management and analytics",
         servers=[
-            {"url": f"http://{settings.api_host}:{settings.api_port}", "description": "Local server"}
+            {
+                "url": f"http://{settings.api_host}:{settings.api_port}",
+                "description": "Local server",
+            }
         ],
         use_handler_docstrings=True,  # Include handler docstrings in OpenAPI
         path="/schema",  # OpenAPI schema endpoint
-        render_plugins=[SwaggerRenderPlugin()]  # Enable Swagger UI
+        render_plugins=[SwaggerRenderPlugin()],  # Enable Swagger UI
     )
-    
+
     # Create application
     app = Litestar(
         route_handlers=[
@@ -126,10 +119,10 @@ def create_app() -> Litestar:
         lifespan=[lifespan],
         debug=False,
     )
-    
+
     # Note: Prometheus metrics would be mounted here if needed
     # For now, metrics are handled separately
-    
+
     return app
 
 

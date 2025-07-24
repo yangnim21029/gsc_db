@@ -74,6 +74,11 @@ class RankingDataRequest(BaseModel):
         description="Data aggregation mode: 'raw' (original data) or 'daily' (aggregated by day)",
         examples=["daily"],
     )
+    matching_mode: Optional[str] = Field(
+        default="exact",
+        description="Query matching mode: 'exact' (完全匹配) or 'partial' (部分匹配). For partial matching, queries will match if they contain the search term.",
+        examples=["exact", "partial"],
+    )
 
 
 class RankingDataItem(BaseModel):

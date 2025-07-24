@@ -71,12 +71,18 @@ def get_ranking_data(
     - Filter by specific pages like "/hotels" and "/restaurants"
 
     ## IMPORTANT: Query Matching Behavior
-    The 'queries' parameter uses EXACT MATCH:
+    The 'queries' parameter supports two matching modes:
+
+    ### Exact Match (default, matching_mode="exact"):
     - "男士 理髮" (with space) will ONLY match "男士 理髮"
     - "男士理髮" (no space) will ONLY match "男士理髮"
     - "是" will ONLY match the single character "是", NOT "什麼是" or "是不是"
 
-    For PARTIAL MATCHING (finding queries containing keywords), use:
+    ### Partial Match (matching_mode="partial"):
+    - "理髮" will match "男士理髮", "男士 理髮", "理髮店", etc.
+    - "是" will match "什麼是", "是不是", "台北是", etc.
+
+    For simple partial matching searches, you can also use:
     GET /api/v1/sites/{site_id}/queries/search?search_term=理髮
     """
     # Validate that either site_id or hostname is provided
@@ -97,16 +103,31 @@ def get_ranking_data(
 
     # If specific queries or pages are requested, we need to query them individually
     if request.queries and request.group_by == "query":
-        # Query each specific keyword
-        for query in request.queries:
-            data = analysis_service.get_performance_data_for_visualization(
+        if request.matching_mode == "partial":
+            # For partial matching, we need to get all data and filter in memory
+            all_query_data = analysis_service.get_performance_data_for_visualization(
                 site_id=site_id,
                 start_date=request.start_date,
                 end_date=request.end_date,
                 group_by="query",
-                filter_term=query,
             )
-            all_data.extend(data)
+            # Filter data based on partial matching
+            for item in all_query_data:
+                for search_term in request.queries:
+                    if search_term in item.get("query", ""):
+                        all_data.append(item)
+                        break  # Avoid duplicates
+        else:
+            # Exact matching (default)
+            for query in request.queries:
+                data = analysis_service.get_performance_data_for_visualization(
+                    site_id=site_id,
+                    start_date=request.start_date,
+                    end_date=request.end_date,
+                    group_by="query",
+                    filter_term=query,
+                )
+                all_data.extend(data)
     elif request.pages and request.group_by == "page":
         # Query each specific page
         for page in request.pages:

@@ -1,5 +1,73 @@
 # GSC Database Update History
 
+## Version 2.4.0 - Sync Performance Diagnostics & API Improvements (2025-07-24)
+
+### 🎯 同步效能診斷工具與 API 優化
+
+新增診斷端點以測試和分析同步效能，並優化 API 結構。
+
+#### 主要變更
+
+1. **新增診斷路由**
+   - 新檔案：`src/web/api/routers/diagnostics.py`
+   - 提供同步效能測試和分析工具
+   - 幫助識別效能瓶頸
+
+2. **診斷端點**
+   - `GET /api/v1/diagnostics/test-db-connection` - 測試資料庫連線效能
+   - `POST /api/v1/diagnostics/test-sync` - 執行批量同步並測量時間
+   - `GET /api/v1/diagnostics/check-locks` - 檢查資料庫鎖定狀態
+
+3. **效能分析結果**
+   - GSC API 調用佔用 95%+ 的同步時間
+   - 資料庫操作僅佔 < 5% 時間
+   - 平均每個站點每天需要 1.5-2 秒同步時間
+   - 瓶頸在於 Google API 回應速度，非系統問題
+
+4. **API 優化**
+   - 移除冗餘的 GET 端點（ranking-data、page-keyword-performance）
+   - 保留功能更強大的 POST 端點
+   - 新增 `matching_mode` 參數到 ranking-data 端點
+   - 支援完全匹配（exact）和部分匹配（partial）模式
+
+5. **匹配模式增強**
+   - **完全匹配**（預設）：`matching_mode="exact"`
+     - "男士 理髮" 只匹配 "男士 理髮"
+   - **部分匹配**：`matching_mode="partial"`
+     - "理髮" 匹配所有包含 "理髮" 的查詢
+
+#### 同步測試結果
+
+測試 2 個站點，各同步 5 天的數據：
+- **總時間**：14.46 秒（10 個任務）
+- **平均每任務**：1.45 秒
+- **API 時間**：13.78 秒（95.3%）
+- **資料庫時間**：0.67 秒（4.6%）
+- **瓶頸**：GSC API 調用
+
+#### 使用範例
+
+```bash
+# 測試同步效能
+POST /api/v1/diagnostics/test-sync
+{
+  "site_ids": [4, 5],
+  "days": 5
+}
+
+# 使用部分匹配模式
+POST /api/v1/analytics/ranking-data
+{
+  "site_id": 4,
+  "queries": ["理髮"],
+  "matching_mode": "partial",
+  "start_date": "2025-07-01",
+  "end_date": "2025-07-15"
+}
+```
+
+---
+
 ## Version 2.3.0 - API Modularization & Query Search (2025-07-24)
 
 ### 🎯 API 模組化重構與查詢搜尋功能

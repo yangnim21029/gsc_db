@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .dependencies import container
-from .routers import analytics, health, performance, queries, sites, sync
+from .routers import analytics, diagnostics, health, performance, queries, sites, sync
 
 # Create FastAPI app
 app = FastAPI(
@@ -62,6 +62,7 @@ app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(queries.router, prefix="/api/v1")
 app.include_router(performance.router)
 app.include_router(sync.router, prefix="/api/v1")
+app.include_router(diagnostics.router, prefix="/api/v1")
 
 
 # Root endpoint

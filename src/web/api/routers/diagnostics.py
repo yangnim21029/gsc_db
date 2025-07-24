@@ -6,7 +6,7 @@ API endpoints for testing and diagnosing sync performance issues.
 
 import time
 from datetime import datetime, timedelta
-from typing import List
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -30,9 +30,9 @@ class SyncTestRequest(BaseModel):
 @router.get("/test-db-connection")
 async def test_database_connection(
     db: Database = Depends(get_database),
-):
+) -> Dict[str, Any]:
     """Test database connection and query performance"""
-    results = {}
+    results: Dict[str, Any] = {}
 
     # Test 1: Basic connection
     start = time.time()
@@ -151,12 +151,43 @@ async def check_database_locks(
         return {"database_state": "error", "error": str(e), "type": type(e).__name__}
 
 
+def identify_bottleneck(steps: List[Dict[str, Any]]) -> str:
+    """Identify the bottleneck from diagnostic steps"""
+    max_time = 0
+    bottleneck = "unknown"
+
+    for step in steps:
+        if step.get("time_ms", 0) > max_time:
+            max_time = step["time_ms"]
+            bottleneck = step["step"]
+
+    return bottleneck
+
+
+def get_recommendations(steps: List[Dict[str, Any]]) -> List[str]:
+    """Get recommendations based on diagnostic results"""
+    recommendations: List[str] = []
+
+    for step in steps:
+        if not step.get("success", True):
+            recommendations.append(
+                f"Fix error in {step['step']}: {step.get('error', 'Unknown error')}"
+            )
+        elif step.get("time_ms", 0) > 1000:
+            recommendations.append(f"Optimize {step['step']} - taking {step['time_ms']}ms")
+
+    if not recommendations:
+        recommendations.append("Performance appears normal")
+
+    return recommendations
+
+
 @router.post("/test-sync")
 async def test_sync_timing(
     request: SyncTestRequest,
     db: Database = Depends(get_database),
     site_service: SiteService = Depends(get_site_service),
-):
+) -> Dict[str, Any]:
     """
     Test sync timing for multiple sites.
     This performs sync operations and measures the time.
@@ -179,7 +210,7 @@ async def test_sync_timing(
     # Get GSC client from container
     gsc_client = container.gsc_client()
 
-    results = {
+    results: Dict[str, Any] = {
         "test_params": {"site_ids": site_ids, "days": days, "total_tasks": len(site_ids) * days},
         "sites": [],
         "timing": {

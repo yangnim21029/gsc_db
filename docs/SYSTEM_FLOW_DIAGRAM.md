@@ -38,6 +38,7 @@ graph TB
             QUERIES[/api/v1/sites/{id}/queries/]
             PERF[/api/v1/page-keyword-performance/]
             SYNC_API[/api/v1/sync/]
+            DIAG[/api/v1/diagnostics/]
         end
 
         API --> HEALTH
@@ -46,6 +47,7 @@ graph TB
         API --> QUERIES
         API --> PERF
         API --> SYNC_API
+        API --> DIAG
     end
 
     subgraph "Core Services"
@@ -99,6 +101,8 @@ graph TB
     QUERIES --> DB_WRAPPER
     PERF --> ANALYSIS_SVC
     SYNC_API --> DB_WRAPPER
+    DIAG --> DB_WRAPPER
+    DIAG --> GSC_CLIENT
 
     SITE_SVC --> DB_WRAPPER
     ANALYSIS_SVC --> DB_WRAPPER

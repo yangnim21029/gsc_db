@@ -39,8 +39,7 @@ def main():
         # 初始化服務
         database_path = str(settings.paths.database_path)
         logger.info(f"使用資料庫路徑: {database_path}")
-        process_safe_db = ProcessSafeDatabase(database_path)
-        db = process_safe_db.get_database()
+        db = ProcessSafeDatabase(database_path)  # ProcessSafeDatabase 本身就是 Database 的代理
         gsc_client = GSCClient(db)
 
         # 獲取站點

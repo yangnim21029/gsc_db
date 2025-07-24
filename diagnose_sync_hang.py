@@ -41,20 +41,19 @@ def main():
         from src.services.gsc_client import GSCClient
         from src.services.process_safe_database import ProcessSafeDatabase
 
-        logger.info("✓ 模組導入成功")
+        logger.info("[OK] 模組導入成功")
 
         # 2. 使用 ProcessSafeDatabase 初始化服務
         logger.info("步驟 2: 初始化服務...")
         database_path = str(settings.paths.database_path)
         logger.info(f"  使用資料庫路徑: {database_path}")
-        process_safe_db = ProcessSafeDatabase(database_path)
-        db = process_safe_db.get_database()
+        db = ProcessSafeDatabase(database_path)  # ProcessSafeDatabase 本身就是 Database 的代理
         gsc_client = GSCClient(db)
-        logger.info("✓ 服務初始化成功")
+        logger.info("[OK] 服務初始化成功")
 
         # 3. 驗證服務
         logger.info("步驟 3: 驗證服務...")
-        logger.info("✓ 服務驗證成功")
+        logger.info("[OK] 服務驗證成功")
 
         # 4. 測試資料庫
         logger.info("步驟 4: 測試資料庫連接...")
@@ -63,7 +62,7 @@ def main():
         if not site:
             logger.error("找不到 site_id = 4")
             return
-        logger.info(f"✓ 找到站點: {site['name']}")
+        logger.info(f"[OK] 找到站點: {site['name']}")
 
         # 5. 測試 GSC Client 內部狀態
         logger.info("步驟 5: 檢查 GSC Client 狀態...")
@@ -98,7 +97,7 @@ def main():
             for device, search_type, chunk in data_stream:
                 elapsed = time.time() - start_time
                 logger.info(
-                    f"✓ 收到 chunk #{chunk_count + 1}: device={device}, search_type={search_type}, 數據筆數={len(chunk)}, 耗時={elapsed:.2f}秒"
+                    f"[OK] 收到 chunk #{chunk_count + 1}: device={device}, search_type={search_type}, 數據筆數={len(chunk)}, 耗時={elapsed:.2f}秒"
                 )
                 chunk_count += 1
 
@@ -114,7 +113,7 @@ def main():
             if chunk_count == 0:
                 logger.error("沒有收到任何數據 chunk！")
             else:
-                logger.info(f"✓ 成功收到 {chunk_count} 個數據 chunk")
+                logger.info(f"[OK] 成功收到 {chunk_count} 個數據 chunk")
 
         except Exception as e:
             logger.error(f"stream_site_data 失敗: {type(e).__name__}: {str(e)}")
@@ -129,7 +128,7 @@ def main():
                 data = gsc_client.get_search_analytics(
                     site["domain"], test_date, test_date, row_limit=10
                 )
-                logger.info(f"✓ API 調用成功，返回 {len(data) if data else 0} 筆數據")
+                logger.info(f"[OK] API 調用成功，返回 {len(data) if data else 0} 筆數據")
             except Exception as e:
                 logger.error(f"API 調用失敗: {e}")
         else:

@@ -10,6 +10,7 @@ Tests various scenarios including:
 - Response time measurements
 """
 
+import concurrent.futures
 import json
 import statistics
 import time
@@ -77,7 +78,9 @@ class PerformanceTest:
             "test": "basic_query",
             "response_time": response_time,
             "status_code": status_code,
-            "records_returned": len(data.get("data", [])) if isinstance(data, dict) else 0,
+            "records_returned": len(data.get("data", []))
+            if isinstance(data, dict) and data is not None
+            else 0,
             "payload": payload,
         }
 
@@ -92,7 +95,7 @@ class PerformanceTest:
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=30)
 
-        payload = {
+        payload: Dict[str, Any] = {
             "site_id": site_id,
             "start_date": str(start_date),
             "end_date": str(end_date),
@@ -107,7 +110,9 @@ class PerformanceTest:
             "test": "filtered_queries",
             "response_time": response_time,
             "status_code": status_code,
-            "records_returned": len(data.get("data", [])) if isinstance(data, dict) else 0,
+            "records_returned": len(data.get("data", []))
+            if isinstance(data, dict) and data is not None
+            else 0,
             "queries_count": len(payload["queries"]),
             "payload": payload,
         }
@@ -137,7 +142,9 @@ class PerformanceTest:
             "test": "page_grouping",
             "response_time": response_time,
             "status_code": status_code,
-            "records_returned": len(data.get("data", [])) if isinstance(data, dict) else 0,
+            "records_returned": len(data.get("data", []))
+            if isinstance(data, dict) and data is not None
+            else 0,
             "payload": payload,
         }
 
@@ -166,7 +173,9 @@ class PerformanceTest:
             "test": "large_date_range",
             "response_time": response_time,
             "status_code": status_code,
-            "records_returned": len(data.get("data", [])) if isinstance(data, dict) else 0,
+            "records_returned": len(data.get("data", []))
+            if isinstance(data, dict) and data is not None
+            else 0,
             "days_queried": 90,
             "payload": payload,
         }
@@ -196,7 +205,9 @@ class PerformanceTest:
             "test": "max_results_limit",
             "response_time": response_time,
             "status_code": status_code,
-            "records_returned": len(data.get("data", [])) if isinstance(data, dict) else 0,
+            "records_returned": len(data.get("data", []))
+            if isinstance(data, dict) and data is not None
+            else 0,
             "max_results_requested": 10000,
             "payload": payload,
         }
@@ -228,7 +239,9 @@ class PerformanceTest:
             "test": "hostname_query",
             "response_time": response_time,
             "status_code": status_code,
-            "records_returned": len(data.get("data", [])) if isinstance(data, dict) else 0,
+            "records_returned": len(data.get("data", []))
+            if isinstance(data, dict) and data is not None
+            else 0,
             "hostname": hostname,
             "payload": payload,
         }
@@ -326,7 +339,9 @@ class PerformanceTest:
             "test": "hourly_ranking_api",
             "response_time": response_time,
             "status_code": status_code,
-            "records_returned": len(data.get("data", [])) if isinstance(data, dict) else 0,
+            "records_returned": len(data.get("data", []))
+            if isinstance(data, dict) and data is not None
+            else 0,
             "date_range": f"{start_date} to {end_date}",
             "payload": payload,
         }
@@ -366,7 +381,9 @@ class PerformanceTest:
             "test": "hourly_api_hostname",
             "response_time": response_time,
             "status_code": status_code,
-            "records_returned": len(data.get("data", [])) if isinstance(data, dict) else 0,
+            "records_returned": len(data.get("data", []))
+            if isinstance(data, dict) and data is not None
+            else 0,
             "hostname": hostname,
             "payload": payload,
         }
@@ -379,11 +396,11 @@ class PerformanceTest:
         return result
 
     def test_concurrent_requests(
-        self, site_id: int = DEFAULT_SITE_ID, concurrent: int = 10
+        self, site_id: int = DEFAULT_SITE_ID, concurrent_count: int = 10
     ) -> Dict[str, Any]:
         """Test concurrent requests."""
         console.print(
-            f"\n[bold blue]Testing Concurrent Requests ({concurrent} simultaneous)[/bold blue]"
+            f"\n[bold blue]Testing Concurrent Requests ({concurrent_count} simultaneous)[/bold blue]"
         )
 
         end_date = datetime.now().date()
@@ -402,11 +419,13 @@ class PerformanceTest:
 
         with Progress() as progress:
             task = progress.add_task(
-                f"[cyan]Making {concurrent} concurrent requests...", total=concurrent
+                f"[cyan]Making {concurrent_count} concurrent requests...", total=concurrent_count
             )
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent) as executor:
-                futures = [executor.submit(self.make_request, payload) for _ in range(concurrent)]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_count) as executor:
+                futures = [
+                    executor.submit(self.make_request, payload) for _ in range(concurrent_count)
+                ]
 
                 for future in concurrent.futures.as_completed(futures):
                     response_time, status_code, _ = future.result()
@@ -417,7 +436,7 @@ class PerformanceTest:
 
         result = {
             "test": "concurrent_requests",
-            "concurrent_requests": concurrent,
+            "concurrent_requests": concurrent_count,
             "successful_requests": successful_requests,
             "avg_response_time": statistics.mean(response_times),
             "min_response_time": min(response_times),

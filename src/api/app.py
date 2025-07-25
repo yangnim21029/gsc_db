@@ -12,6 +12,8 @@ from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import SwaggerRenderPlugin
 from litestar.openapi.spec import Server
 from litestar.response import Redirect
+from litestar.response import Response
+from litestar.status_codes import HTTP_404_NOT_FOUND
 
 from ..config import get_settings
 from ..database.hybrid import HybridDataStore
@@ -29,8 +31,19 @@ async def lifespan(app: Litestar) -> AsyncGenerator[None, None]:
     # Startup
     settings = get_settings()
 
+    # Use test database in development mode
+    import os
+    from pathlib import Path
+
+    db_path = None
+    if os.environ.get("GSC_DEV_MODE"):
+        test_db_path = Path("data/gsc_data.db")
+        test_db_path.parent.mkdir(exist_ok=True)
+        db_path = test_db_path
+        print(f"Using test database: {db_path}")
+
     # Initialize database
-    db = HybridDataStore()
+    db = HybridDataStore(sqlite_path=db_path)
     await db.initialize()
     app.state.db = db
 
@@ -75,7 +88,10 @@ def create_app() -> Litestar:
 
     # Configure compression
     compression_config = CompressionConfig(
-        backend="gzip", minimum_size=1000, gzip_compress_level=6, exclude=["/metrics", "/health"]
+        backend="gzip",
+        minimum_size=1000,
+        gzip_compress_level=6,
+        exclude=["/metrics", "/health"],
     )
 
     # Configure CORS to fix Swagger fetch errors
@@ -113,6 +129,7 @@ def create_app() -> Litestar:
             root,
             health_check,
             docs_redirect,
+            handle_inngest_probes,
         ],
         dependencies={
             "db": Provide(get_db),
@@ -152,6 +169,15 @@ async def health_check() -> dict[str, str]:
 async def docs_redirect() -> Redirect:
     """Redirect /docs to Swagger UI."""
     return Redirect(path="/schema/swagger")
+
+
+@get(
+    ["/api/inngest", "/x/inngest", "/.netlify/functions/inngest", "/.redwood/functions/inngest"],
+    include_in_schema=False,
+)
+async def handle_inngest_probes() -> Response[None]:
+    """Handle automated Inngest service detection probes without logging errors."""
+    return Response(None, status_code=HTTP_404_NOT_FOUND)
 
 
 # Create application instance

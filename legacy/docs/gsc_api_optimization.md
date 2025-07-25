@@ -116,7 +116,7 @@ time.sleep(0.1)
 1. **test_rate_limit_check**：驗證速率限制檢查功能
 2. **test_optimized_stream_data_structure**：測試優化後的數據流結構
 3. **test_concurrent_worker_optimization**：驗證併發工作者數量優化
-4. **test_api_best_practices_compliance**：測試 API 最佳實踐遵循
+4. **gsc_data_best_practices_compliance**：測試 API 最佳實踐遵循
 5. **test_ssl_error_handling_improvement**：測試 SSL 錯誤處理改進
 6. **test_rate_limit_429_handling**：測試 429 速率限制錯誤處理
 7. **test_backward_compatibility**：測試向後兼容性

@@ -2,16 +2,16 @@ name: API Contract Tests
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths:
       - 'src/api/**'
-      - 'tests/test_api_*.py'
+      - 'tests/gsc_data_*.py'
       - 'tests/api_contracts.yaml'
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'src/api/**'
-      - 'tests/test_api_*.py'
+      - 'tests/gsc_data_*.py'
       - 'tests/api_contracts.yaml'
 
 jobs:
@@ -23,72 +23,72 @@ jobs:
         python-version: [3.11, 3.12]
 
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        virtualenvs-create: true
-        virtualenvs-in-project: true
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
 
-    - name: Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: .venv
-        key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
 
-    - name: Install dependencies
-      run: |
-        poetry install --no-interaction --no-root
-        poetry install --no-interaction
+      - name: Install dependencies
+        run: |
+          poetry install --no-interaction --no-root
+          poetry install --no-interaction
 
-    - name: Initialize test database
-      run: |
-        poetry run python -c "
-        import asyncio
-        from pathlib import Path
-        from src.database.hybrid import HybridDataStore
+      - name: Initialize test database
+        run: |
+          poetry run python -c "
+          import asyncio
+          from pathlib import Path
+          from src.database.hybrid import HybridDataStore
 
-        async def init():
-            db_path = Path('test_contract.db')
-            db = HybridDataStore(db_path)
-            await db.initialize()
-            await db.close()
+          async def init():
+              db_path = Path('test_contract.db')
+              db = HybridDataStore(db_path)
+              await db.initialize()
+              await db.close()
 
-        asyncio.run(init())
-        "
+          asyncio.run(init())
+          "
 
-    - name: Start API server
-      run: |
-        poetry run uvicorn src.api.app:create_app --factory --host 0.0.0.0 --port 8000 &
-        sleep 5  # Wait for server to start
+      - name: Start API server
+        run: |
+          poetry run uvicorn src.api.app:create_app --factory --host 0.0.0.0 --port 8000 &
+          sleep 5  # Wait for server to start
 
-    - name: Run quick contract tests
-      run: |
-        poetry run python tests/test_api_quick.py
+      - name: Run quick contract tests
+        run: |
+          poetry run python tests/gsc_data_quick.py
 
-    - name: Run full contract tests
-      run: |
-        poetry run pytest tests/test_api_contract.py -v --tb=short
+      - name: Run full contract tests
+        run: |
+          poetry run pytest tests/gsc_data_contract.py -v --tb=short
 
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: contract-test-results-${{ matrix.python-version }}
-        path: |
-          .pytest_cache/
-          test_contract.db
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: contract-test-results-${{ matrix.python-version }}
+          path: |
+            .pytest_cache/
+            test_contract.db
 
-    - name: Check API backwards compatibility
-      if: github.event_name == 'pull_request'
-      run: |
-        # This would compare API responses with the main branch
-        # to ensure backwards compatibility
-        echo "Checking API backwards compatibility..."
-        # Add actual compatibility checks here
+      - name: Check API backwards compatibility
+        if: github.event_name == 'pull_request'
+        run: |
+          # This would compare API responses with the main branch
+          # to ensure backwards compatibility
+          echo "Checking API backwards compatibility..."
+          # Add actual compatibility checks here

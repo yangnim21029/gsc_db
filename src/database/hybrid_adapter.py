@@ -6,6 +6,7 @@ from typing import Any
 
 from ..models import PerformanceData, Site
 from .datastore import DataStore
+from .utils import ensure_connection
 
 
 class HybridDataStore(DataStore):
@@ -64,7 +65,7 @@ class HybridDataStore(DataStore):
         return await self.hourly.get_hourly_coverage(site_id, days)
 
     # Analytics - delegate to service
-    async def analyze_performance_trends(self, site_id: int, days: int):
+    async def analyze_performance_trends(self, site_id: int, days: int) -> Any:
         """Analyze performance trends."""
         if not self.analytics:
             raise RuntimeError("Analytics service not initialized")
@@ -104,11 +105,9 @@ class HybridDataStore(DataStore):
         except Exception:
             return False
 
+    @ensure_connection
     async def check_locks(self) -> dict[str, Any]:
         """Check database locks and settings."""
-        if not self._sqlite_conn:
-            raise RuntimeError("Database not initialized")
-
         async with self._lock:
             # Get pragma settings
             pragmas = {}

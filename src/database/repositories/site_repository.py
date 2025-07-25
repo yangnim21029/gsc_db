@@ -15,20 +15,14 @@ class SiteRepository(Repository):
         if active_only:
             query += " WHERE is_active = 1"
 
-        async with self._lock:
-            conn = self._ensure_connection()
-            cursor = await conn.execute(query)
-            rows = await cursor.fetchall()
-
+        cursor = await self._execute_query(query)
+        rows = await cursor.fetchall()
         return [self._row_to_site(row) for row in rows]
 
     async def get_by_id(self, site_id: int) -> Site | None:
         """Get site by ID."""
-        async with self._lock:
-            conn = self._ensure_connection()
-            cursor = await conn.execute("SELECT * FROM sites WHERE id = ?", (site_id,))
-            row = await cursor.fetchone()
-
+        cursor = await self._execute_query("SELECT * FROM sites WHERE id = ?", (site_id,))
+        row = await cursor.fetchone()
         return self._row_to_site(row) if row else None
 
     async def get_by_hostname(self, hostname: str) -> Site | None:
@@ -47,15 +41,13 @@ class SiteRepository(Repository):
             f"www.{hostname}",
         ]
 
-        async with self._lock:
-            conn = self._ensure_connection()
-            for variant in variations:
-                cursor = await conn.execute(
-                    "SELECT * FROM sites WHERE domain = ? AND is_active = 1 LIMIT 1", (variant,)
-                )
-                row = await cursor.fetchone()
-                if row:
-                    return self._row_to_site(row)
+        for variant in variations:
+            cursor = await self._execute_query(
+                "SELECT * FROM sites WHERE domain = ? AND is_active = 1 LIMIT 1", (variant,)
+            )
+            row = await cursor.fetchone()
+            if row:
+                return self._row_to_site(row)
 
         return None
 

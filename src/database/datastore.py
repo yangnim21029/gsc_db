@@ -1,6 +1,7 @@
 """Modern DataStore implementation with separated concerns."""
 
 import asyncio
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,7 @@ class DataStore:
     def __init__(self, db_path: Path | None = None, enable_duckdb: bool = True):
         """Initialize data store with optional custom database path."""
         settings = get_settings()
-        self.db_path = db_path or settings.paths.database
+        self.db_path = db_path or Path(settings.database_path)
         self.enable_duckdb = enable_duckdb
 
         # Connections
@@ -95,7 +96,7 @@ class DataStore:
                 self._duck_conn = None
 
     @asynccontextmanager
-    async def transaction(self):
+    async def transaction(self) -> AsyncGenerator[aiosqlite.Connection, None]:
         """Provide a database transaction context."""
         if not self._transaction_manager:
             raise RuntimeError("Database not initialized")
@@ -107,73 +108,11 @@ class DataStore:
         if not self._sqlite_conn:
             raise RuntimeError("Database not initialized")
 
-        # Sites table
-        await self._sqlite_conn.execute("""
-            CREATE TABLE IF NOT EXISTS sites (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                domain TEXT NOT NULL UNIQUE,
-                name TEXT NOT NULL,
-                category TEXT,
-                is_active BOOLEAN DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        from .schema import DatabaseSchema
 
-        # Performance data table
-        await self._sqlite_conn.execute("""
-            CREATE TABLE IF NOT EXISTS gsc_performance_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                site_id INTEGER NOT NULL,
-                date DATE NOT NULL,
-                page TEXT NOT NULL,
-                query TEXT NOT NULL,
-                device TEXT DEFAULT 'DESKTOP',
-                search_type TEXT DEFAULT 'WEB',
-                clicks INTEGER NOT NULL,
-                impressions INTEGER NOT NULL,
-                ctr REAL NOT NULL,
-                position REAL NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (site_id) REFERENCES sites(id),
-                UNIQUE(site_id, date, page, query, device, search_type)
-            )
-        """)
-
-        # Hourly rankings table
-        await self._sqlite_conn.execute("""
-            CREATE TABLE IF NOT EXISTS hourly_rankings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                site_id INTEGER NOT NULL,
-                date DATE NOT NULL,
-                hour INTEGER NOT NULL,
-                query TEXT NOT NULL,
-                page TEXT NOT NULL,
-                position REAL NOT NULL,
-                clicks INTEGER NOT NULL,
-                impressions INTEGER NOT NULL,
-                ctr REAL NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (site_id) REFERENCES sites(id),
-                UNIQUE(site_id, date, hour, query, page)
-            )
-        """)
-
-        # Basic indexes
-        await self._sqlite_conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_performance_site_date
-            ON gsc_performance_data(site_id, date)
-        """)
-
-        await self._sqlite_conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_performance_query
-            ON gsc_performance_data(query)
-        """)
-
-        await self._sqlite_conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_hourly_site_date
-            ON hourly_rankings(site_id, date, hour)
-        """)
+        # Execute all schema statements
+        for statement in DatabaseSchema.get_all_create_statements():
+            await self._sqlite_conn.execute(statement)
 
         await self._sqlite_conn.commit()
 
@@ -182,21 +121,8 @@ class DataStore:
         if not self._sqlite_conn:
             raise RuntimeError("Database not initialized")
 
-        # Additional performance indexes
-        indexes = [
-            """CREATE INDEX IF NOT EXISTS idx_gsc_performance_site_page_clicks
-               ON gsc_performance_data(site_id, page, clicks DESC)""",
-            """CREATE INDEX IF NOT EXISTS idx_gsc_performance_site_query_clicks
-               ON gsc_performance_data(site_id, query, clicks DESC)""",
-            """CREATE INDEX IF NOT EXISTS idx_gsc_performance_composite
-               ON gsc_performance_data(site_id, date, page, query, clicks DESC)""",
-        ]
-
-        for index_sql in indexes:
-            await self._sqlite_conn.execute(index_sql)
-
         # Update statistics
-        await self._sqlite_conn.execute("ANALYZE gsc_performance_data")
+        await self._sqlite_conn.execute("ANALYZE")
         await self._sqlite_conn.commit()
 
     # Convenience methods for backward compatibility
@@ -218,7 +144,7 @@ class DataStore:
         date_range: tuple[str, str] | None = None,
         url_filter: str | None = None,
         limit: int | None = None,
-    ):
+    ) -> AsyncGenerator[str, None]:
         """Stream page-keyword performance data."""
         if not self.streaming:
             raise RuntimeError("Streaming service not initialized")
@@ -230,24 +156,33 @@ class DataStore:
 
     async def export_performance_csv(self, data: list[dict]) -> str:
         """Export performance data as CSV."""
+        from .utils import CSVFormatter
+
         if not data:
             return (
                 "url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count\n"
             )
 
         lines = ["url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count"]
+        formatter = CSVFormatter()
 
         for item in data:
-            keywords_str = "|".join(item["keywords"]) if item["keywords"] else ""
-            lines.append(
-                f'"{item["url"]}",{item["total_clicks"]},{item["total_impressions"]},'
-                f'{item["avg_ctr"]:.4f},{item["avg_position"]:.2f},"{keywords_str}",'
-                f"{item['keyword_count']}"
-            )
+            keywords_str = formatter.format_keywords(item.get("keywords", []))
+            values = [
+                item["url"],
+                item["total_clicks"],
+                item["total_impressions"],
+                item["avg_ctr"],
+                item["avg_position"],
+                keywords_str,
+                item["keyword_count"],
+            ]
+            types = ["string", "int", "int", "float", "float", "string", "int"]
+            lines.append(formatter.format_row(values, types))
 
         return "\n".join(lines)
 
     # Legacy compatibility
-    async def get_site_by_hostname(self, hostname: str):
+    async def get_site_by_hostname(self, hostname: str) -> Any:
         """Get site by hostname."""
         return await self.sites.get_by_hostname(hostname)

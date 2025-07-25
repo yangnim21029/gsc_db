@@ -9,8 +9,8 @@ from litestar.config.cors import CORSConfig
 from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.openapi import OpenAPIConfig
-from litestar.openapi.datastructures import Server
 from litestar.openapi.plugins import SwaggerRenderPlugin
+from litestar.openapi.spec import Server
 from litestar.response import Redirect
 
 from ..config import get_settings

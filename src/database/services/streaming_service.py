@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from ..base import AnalyticsService, Repository
+from ..utils import CSVFormatter
 
 
 class StreamingService:
@@ -106,13 +107,15 @@ class StreamingService:
         yield "url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count\n"
 
         # Stream results
+        formatter = CSVFormatter()
         while True:
             row = await loop.run_in_executor(None, result.fetchone)
             if not row:
                 break
 
-            line = f'"{row[0]}",{row[1]},{row[2]},{row[3]:.4f},{row[4]:.2f},"{row[5]}",{row[6]}\n'
-            yield line
+            values = [row[0], row[1], row[2], row[3], row[4], row[5], row[6]]
+            types = ["string", "int", "int", "float", "float", "string", "int"]
+            yield formatter.format_row(values, types) + "\n"
 
     async def _stream_with_sqlite(
         self,
@@ -175,5 +178,7 @@ class StreamingService:
                 keywords = [kw[0] async for kw in keyword_cursor]
                 keywords_str = "|".join(keywords) if keywords else ""
 
-                line = f'"{url}",{row[1]},{row[2]},{row[3]:.4f},{row[4]:.2f},"{keywords_str}",{row[5]}\n'
-                yield line
+                formatter = CSVFormatter()
+                values = [url, row[1], row[2], row[3], row[4], keywords_str, row[5]]
+                types = ["string", "int", "int", "float", "float", "string", "int"]
+                yield formatter.format_row(values, types) + "\n"

@@ -42,6 +42,22 @@ class Repository:
             raise RuntimeError("Database connection not initialized")
         return self._sqlite_conn
 
+    async def _execute_query(self, query: str, params: Any = None) -> aiosqlite.Cursor:
+        """Execute a query with connection check."""
+        if not self._lock:
+            raise RuntimeError("Lock not initialized")
+        async with self._lock:
+            conn = self._ensure_connection()
+            return await conn.execute(query, params or ())
+
+    async def _execute_many(self, query: str, params_list: list[Any]) -> None:
+        """Execute many queries with connection check."""
+        if not self._lock:
+            raise RuntimeError("Lock not initialized")
+        async with self._lock:
+            conn = self._ensure_connection()
+            await conn.executemany(query, params_list)
+
 
 class AnalyticsService:
     """Base analytics service using DuckDB."""

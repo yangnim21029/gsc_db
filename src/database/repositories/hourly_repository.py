@@ -1,10 +1,10 @@
 """Hourly rankings repository for hourly GSC data."""
 
-import sqlite3
 from datetime import date
 from typing import Any
 
 from ..base import Repository
+from ..utils import execute_batch_insert
 
 
 class HourlyRepository(Repository):
@@ -17,57 +17,38 @@ class HourlyRepository(Repository):
         if not records:
             return {"inserted": 0, "skipped": 0}
 
-        stats = {"inserted": 0, "skipped": 0}
+        columns = [
+            "site_id",
+            "date",
+            "hour",
+            "query",
+            "page",
+            "position",
+            "clicks",
+            "impressions",
+            "ctr",
+        ]
+
+        record_tuples = [
+            (
+                record["site_id"],
+                record["date"],
+                record["hour"],
+                record["query"],
+                record["page"],
+                record["position"],
+                record["clicks"],
+                record["impressions"],
+                record["ctr"],
+            )
+            for record in records
+        ]
 
         async with self._lock:
             conn = self._ensure_connection()
-            async with conn.transaction():
-                for record in records:
-                    if sync_mode == "skip":
-                        try:
-                            await conn.execute(
-                                """
-                                INSERT INTO hourly_rankings
-                                (site_id, date, hour, query, page, position, clicks, impressions, ctr)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """,
-                                (
-                                    record["site_id"],
-                                    record["date"],
-                                    record["hour"],
-                                    record["query"],
-                                    record["page"],
-                                    record["position"],
-                                    record["clicks"],
-                                    record["impressions"],
-                                    record["ctr"],
-                                ),
-                            )
-                            stats["inserted"] += 1
-                        except sqlite3.IntegrityError:
-                            stats["skipped"] += 1
-                    else:  # overwrite mode
-                        await conn.execute(
-                            """
-                            INSERT OR REPLACE INTO hourly_rankings
-                            (site_id, date, hour, query, page, position, clicks, impressions, ctr)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                record["site_id"],
-                                record["date"],
-                                record["hour"],
-                                record["query"],
-                                record["page"],
-                                record["position"],
-                                record["clicks"],
-                                record["impressions"],
-                                record["ctr"],
-                            ),
-                        )
-                        stats["inserted"] += 1
-
-        return stats
+            return await execute_batch_insert(
+                conn, "hourly_rankings", columns, record_tuples, sync_mode
+            )
 
     async def delete_for_date(self, site_id: int, target_date: date) -> None:
         """Delete all hourly data for a specific site and date."""
@@ -86,20 +67,18 @@ class HourlyRepository(Repository):
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=days)
 
-        async with self._lock:
-            conn = self._ensure_connection()
-            cursor = await conn.execute(
-                """
-                SELECT DISTINCT date, hour
-                FROM hourly_rankings
-                WHERE site_id = ? AND date BETWEEN ? AND ?
-                ORDER BY date DESC, hour DESC
-                """,
-                (site_id, start_date.isoformat(), end_date.isoformat()),
-            )
+        cursor = await self._execute_query(
+            """
+            SELECT DISTINCT date, hour
+            FROM hourly_rankings
+            WHERE site_id = ? AND date BETWEEN ? AND ?
+            ORDER BY date DESC, hour DESC
+            """,
+            (site_id, start_date.isoformat(), end_date.isoformat()),
+        )
 
         # Build coverage map
-        synced_hours = {}
+        synced_hours: dict[str, set[int]] = {}
         async for row in cursor:
             date_str = row[0]
             hour = row[1]

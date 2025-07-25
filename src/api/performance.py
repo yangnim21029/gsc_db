@@ -1,11 +1,12 @@
 """Performance data endpoints."""
 
+from collections.abc import AsyncGenerator
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from litestar import Response, Router, get, post
-from litestar.datastructures import Headers
+from litestar import Router, get, post
 from litestar.params import Parameter
+from litestar.response import Stream
 
 from ..database.hybrid import HybridDataStore
 from ..models import PageKeywordPerformanceRequest, PageKeywordPerformanceResponse
@@ -44,10 +45,10 @@ async def get_page_keyword_performance(
         str_date_range = (date_range[0].isoformat(), date_range[1].isoformat())
 
     results = await db.get_page_keyword_performance(
-        site_id=site_id, 
-        date_range=str_date_range, 
+        site_id=site_id,
+        date_range=str_date_range,
         url_filter=data.query,
-        limit=data.limit  # Pass limit to database method
+        limit=data.limit,  # Pass limit to database method
     )
 
     return PageKeywordPerformanceResponse(
@@ -67,11 +68,16 @@ async def download_performance_csv(
     query_filter: Annotated[
         str | None, Parameter(query="query")
     ] = None,  # Fixed: renamed to avoid reserved keyword conflict
-) -> Response:
+    max_results: Annotated[
+        int | None,
+        Parameter(query="max_results", description="Maximum number of results to return"),
+    ] = None,
+) -> Stream:
     """
-    Download page-keyword performance data as CSV.
+    Download page-keyword performance data as CSV with streaming.
 
     Keywords are exported as pipe-separated values in the CSV.
+    Uses DuckDB for efficient analytics on large datasets.
     """
     # Determine site_id
     if not site_id and hostname:
@@ -91,27 +97,26 @@ async def download_performance_csv(
         date_range = (
             start_date.strftime("%Y-%m-%d"),
             end_date.strftime("%Y-%m-%d"),
-        )  # Fixed: convert dates to strings
+        )
 
-    # Get performance data
-    results = await db.get_page_keyword_performance(
-        site_id=site_id,
-        date_range=date_range,
-        url_filter=query_filter,  # Fixed: use renamed parameter
+    # Create async generator for streaming
+    async def stream_csv() -> AsyncGenerator[bytes, None]:
+        async for line in db.get_page_keyword_performance_stream(
+            site_id=site_id,
+            date_range=date_range,
+            url_filter=query_filter,
+            limit=max_results,
+        ):
+            yield line.encode("utf-8")
+
+    # Return streaming response
+    return Stream(
+        stream_csv(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=page_keyword_performance_{site_id}_{datetime.now().strftime('%Y%m%d')}.csv"
+        },
     )
-
-    # Convert to CSV
-    csv_content = await db.export_performance_csv(results["data"])
-
-    # Return CSV response
-    headers = Headers(
-        {
-            "Content-Type": "text/csv",
-            "Content-Disposition": f"attachment; filename=page_keyword_performance_{site_id}.csv",
-        }
-    )
-
-    return Response(content=csv_content, headers=headers)
 
 
 performance_router = Router(

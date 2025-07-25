@@ -9,6 +9,7 @@ from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import SwaggerRenderPlugin
+from litestar.response import Redirect
 
 from ..config import get_settings
 from ..database.hybrid import HybridDataStore
@@ -107,7 +108,9 @@ def create_app() -> Litestar:
             sync_router,
             performance_router,
             diagnostics_router,
+            root,
             health_check,
+            docs_redirect,
         ],
         dependencies={
             "db": Provide(get_db),
@@ -126,10 +129,27 @@ def create_app() -> Litestar:
     return app
 
 
+@get("/", tags=["System"])
+async def root() -> dict[str, str]:
+    """Root endpoint - API information."""
+    return {
+        "service": "GSC Database Manager API",
+        "version": "2.0.0",
+        "docs": "/schema/swagger",
+        "openapi": "/schema",
+    }
+
+
 @get("/health", tags=["System"])
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "healthy", "service": "gsc-db-refactor"}
+
+
+@get("/docs", include_in_schema=False)
+async def docs_redirect() -> Redirect:
+    """Redirect /docs to Swagger UI."""
+    return Redirect(path="/schema/swagger")
 
 
 # Create application instance

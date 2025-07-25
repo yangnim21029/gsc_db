@@ -50,6 +50,9 @@ class HybridDataStore:
             # Create tables
             await self._create_tables()
 
+            # Apply performance optimizations
+            await self._optimize_performance()
+
             # Initialize DuckDB if enabled
             if self.enable_duckdb:
                 self._duck_conn = duckdb.connect(":memory:")
@@ -135,6 +138,25 @@ class HybridDataStore:
             ON hourly_rankings(site_id, date, hour)
         """)
 
+        await self._sqlite_conn.commit()
+
+    async def _optimize_performance(self) -> None:
+        """Apply performance optimizations to the database."""
+        # Create additional performance indexes
+        indexes = [
+            """CREATE INDEX IF NOT EXISTS idx_gsc_performance_site_page_clicks
+               ON gsc_performance_data(site_id, page, clicks DESC)""",
+            """CREATE INDEX IF NOT EXISTS idx_gsc_performance_site_query_clicks
+               ON gsc_performance_data(site_id, query, clicks DESC)""",
+            """CREATE INDEX IF NOT EXISTS idx_gsc_performance_composite
+               ON gsc_performance_data(site_id, date, page, query, clicks DESC)""",
+        ]
+
+        for index_sql in indexes:
+            await self._sqlite_conn.execute(index_sql)
+
+        # Update statistics
+        await self._sqlite_conn.execute("ANALYZE gsc_performance_data")
         await self._sqlite_conn.commit()
 
     @asynccontextmanager
@@ -494,12 +516,16 @@ class HybridDataStore:
         return results
 
     async def get_page_keyword_performance(
-        self, site_id: int, date_range: tuple[str, str] | None = None, url_filter: str | None = None, limit: int | None = None
+        self,
+        site_id: int,
+        date_range: tuple[str, str] | None = None,
+        url_filter: str | None = None,
+        limit: int | None = None,
     ) -> dict[str, Any]:
         """Get page-keyword performance data."""
         # Build query conditions
         where_conditions = ["site_id = ?"]
-        params = [site_id]
+        params: list[Any] = [site_id]
 
         if date_range:
             where_conditions.append("date BETWEEN ? AND ?")
@@ -526,10 +552,10 @@ class HybridDataStore:
             GROUP BY page
             ORDER BY total_clicks DESC
             """
-        
+
         if limit:
             query += f" LIMIT {limit}"
-            
+
         cursor = await self._sqlite_conn.execute(query, params)
 
         results = []
@@ -551,6 +577,163 @@ class HybridDataStore:
             "total_pages": len(results),
             "total_keywords": sum(item["keyword_count"] for item in results),
         }
+
+    async def get_page_keyword_performance_stream(
+        self,
+        site_id: int,
+        date_range: tuple[str, str] | None = None,
+        url_filter: str | None = None,
+        limit: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Stream page-keyword performance data using DuckDB for efficient analytics."""
+        if not self.enable_duckdb:
+            # Fallback to SQLite streaming
+            async for line in self._sqlite_stream_performance(
+                site_id, date_range, url_filter, limit
+            ):
+                yield line
+            return
+
+        # Build WHERE conditions
+        conditions = [f"site_id = {site_id}"]
+        if date_range:
+            conditions.append(f"date BETWEEN '{date_range[0]}' AND '{date_range[1]}'")
+        if url_filter:
+            conditions.append(f"page LIKE '%{url_filter}%'")
+        where_clause = " AND ".join(conditions)
+
+        # DuckDB query with window functions for efficient keyword aggregation
+        query = f"""
+        WITH page_stats AS (
+            SELECT
+                page as url,
+                SUM(clicks) as total_clicks,
+                SUM(impressions) as total_impressions,
+                AVG(ctr) as avg_ctr,
+                AVG(position) as avg_position,
+                COUNT(DISTINCT query) as keyword_count
+            FROM sqlite_db.gsc_performance_data
+            WHERE {where_clause}
+            GROUP BY page
+        ),
+        ranked_keywords AS (
+            SELECT
+                page,
+                query,
+                SUM(clicks) as query_clicks,
+                ROW_NUMBER() OVER (PARTITION BY page ORDER BY SUM(clicks) DESC) as rn
+            FROM sqlite_db.gsc_performance_data
+            WHERE {where_clause}
+            GROUP BY page, query
+        ),
+        page_keywords AS (
+            SELECT
+                page,
+                STRING_AGG(query, '|' ORDER BY rn) as keywords
+            FROM ranked_keywords
+            WHERE rn <= 10
+            GROUP BY page
+        )
+        SELECT
+            ps.url,
+            ps.total_clicks,
+            ps.total_impressions,
+            ps.avg_ctr,
+            ps.avg_position,
+            COALESCE(pk.keywords, '') as keywords,
+            ps.keyword_count
+        FROM page_stats ps
+        LEFT JOIN page_keywords pk ON ps.url = pk.page
+        ORDER BY ps.total_clicks DESC
+        """
+
+        if limit:
+            query += f" LIMIT {limit}"
+
+        # Execute in thread pool for non-blocking
+        loop = asyncio.get_event_loop()
+
+        # Yield header
+        yield "url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count\n"
+
+        # Stream results using DuckDB's efficient execution
+        def execute_query() -> duckdb.DuckDBPyResult:
+            return self._duck_conn.execute(query)
+
+        result = await loop.run_in_executor(None, execute_query)
+
+        # Stream results row by row
+        while True:
+            row = await loop.run_in_executor(None, result.fetchone)
+            if not row:
+                break
+
+            line = f'"{row[0]}",{row[1]},{row[2]},{row[3]:.4f},{row[4]:.2f},"{row[5]}",{row[6]}\n'
+            yield line
+
+    async def _sqlite_stream_performance(
+        self,
+        site_id: int,
+        date_range: tuple[str, str] | None = None,
+        url_filter: str | None = None,
+        limit: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Fallback SQLite streaming implementation."""
+        where_conditions = ["site_id = ?"]
+        params: list[Any] = [site_id]
+
+        if date_range:
+            where_conditions.append("date BETWEEN ? AND ?")
+            params.extend(date_range)
+
+        if url_filter:
+            where_conditions.append("page LIKE ?")
+            params.append(f"%{url_filter}%")
+
+        where_clause = " AND ".join(where_conditions)
+
+        query = f"""
+            SELECT
+                page as url,
+                SUM(clicks) as total_clicks,
+                SUM(impressions) as total_impressions,
+                AVG(ctr) as avg_ctr,
+                AVG(position) as avg_position,
+                COUNT(DISTINCT query) as keyword_count
+            FROM gsc_performance_data
+            WHERE {where_clause}
+            GROUP BY page
+            ORDER BY total_clicks DESC
+            """
+
+        if limit:
+            query += f" LIMIT {limit}"
+
+        cursor = await self._sqlite_conn.execute(query, params)
+
+        yield "url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count\n"
+
+        async for row in cursor:
+            url = row[0]
+
+            # Fetch top 10 keywords efficiently with single query
+            keyword_query = """
+                SELECT query
+                FROM gsc_performance_data
+                WHERE site_id = ? AND page = ?
+                GROUP BY query
+                ORDER BY SUM(clicks) DESC
+                LIMIT 10
+            """
+
+            keyword_cursor = await self._sqlite_conn.execute(keyword_query, (site_id, url))
+            keywords = [kw[0] async for kw in keyword_cursor]
+            keywords_str = "|".join(keywords) if keywords else ""
+
+            line = (
+                f'"{url}",{row[1]},{row[2]},{row[3]:.4f},{row[4]:.2f},"{keywords_str}",{row[5]}\n'
+            )
+            yield line
 
     async def export_performance_csv(self, data: list[dict]) -> str:
         """Export performance data as CSV."""
@@ -669,7 +852,7 @@ class HybridDataStore:
                 # 如果沒有 position 數據，使用預設值 0.0
                 print(f"[WARNING] weighted_position is None for query: {row.get('query')}")
                 weighted_pos = 0.0
-                
+
             item = RankingDataItem(
                 query=row.get("query"),
                 page=row.get("page"),
@@ -686,12 +869,12 @@ class HybridDataStore:
         # DEBUG: 處理聚合計算時的 None 值
         total_clicks = int(df["clicks"].sum())
         total_impressions = int(df["impressions"].sum())
-        
+
         # 計算平均 position 時需要處理 None 值
         position_mean = df["weighted_position"].mean()
         if position_mean is None:
             position_mean = 0.0
-            
+
         aggregations = PerformanceMetrics(
             clicks=total_clicks,
             impressions=total_impressions,
@@ -714,7 +897,7 @@ class HybridDataStore:
         """Get ranking data using SQLite for simple queries."""
         # Build WHERE clause
         where_conditions = ["site_id = ?"]
-        params = [site_id]
+        params: list[Any] = [site_id]
 
         # Date range filter
         where_conditions.append("date BETWEEN ? AND ?")

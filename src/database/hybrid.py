@@ -44,7 +44,11 @@ class HybridDataStore:
             )
 
             # Enable WAL mode for better concurrency
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
             await self._sqlite_conn.execute("PRAGMA journal_mode=WAL")
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
             await self._sqlite_conn.execute("PRAGMA synchronous=NORMAL")
 
             # Create tables
@@ -73,6 +77,9 @@ class HybridDataStore:
 
     async def _create_tables(self) -> None:
         """Create database tables if they don't exist."""
+        if not self._sqlite_conn:
+            raise RuntimeError("Database not initialized")
+
         await self._sqlite_conn.execute("""
             CREATE TABLE IF NOT EXISTS sites (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,6 +149,9 @@ class HybridDataStore:
 
     async def _optimize_performance(self) -> None:
         """Apply performance optimizations to the database."""
+        if not self._sqlite_conn:
+            raise RuntimeError("Database not initialized")
+
         # Create additional performance indexes
         indexes = [
             """CREATE INDEX IF NOT EXISTS idx_gsc_performance_site_page_clicks
@@ -153,6 +163,8 @@ class HybridDataStore:
         ]
 
         for index_sql in indexes:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
             await self._sqlite_conn.execute(index_sql)
 
         # Update statistics
@@ -163,6 +175,11 @@ class HybridDataStore:
     async def transaction(self) -> AsyncGenerator[aiosqlite.Connection, None]:
         """Provide a database transaction context."""
         async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
+
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
             await self._sqlite_conn.execute("BEGIN")
             try:
                 yield self._sqlite_conn
@@ -179,6 +196,8 @@ class HybridDataStore:
             query += " WHERE is_active = 1"
 
         async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
             cursor = await self._sqlite_conn.execute(query)
             rows = await cursor.fetchall()
 
@@ -198,6 +217,8 @@ class HybridDataStore:
     async def get_site_by_id(self, site_id: int) -> Site | None:
         """Get site by ID."""
         async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
             cursor = await self._sqlite_conn.execute("SELECT * FROM sites WHERE id = ?", (site_id,))
             row = await cursor.fetchone()
 
@@ -216,6 +237,8 @@ class HybridDataStore:
     async def add_site(self, domain: str, name: str, category: str | None = None) -> int:
         """Add a new site."""
         async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
             cursor = await self._sqlite_conn.execute(
                 """
                 INSERT INTO sites (domain, name, category)
@@ -224,7 +247,7 @@ class HybridDataStore:
                 (domain, name, category),
             )
             await self._sqlite_conn.commit()
-            return cursor.lastrowid
+            return cursor.lastrowid or 0
 
     # Performance Data Management
     async def insert_performance_data(
@@ -352,6 +375,8 @@ class HybridDataStore:
             if not self._sqlite_conn:
                 raise RuntimeError("Database not initialized")
 
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
             await self._sqlite_conn.execute(
                 "DELETE FROM hourly_rankings WHERE site_id = ? AND date = ?",
                 (site_id, date.isoformat()),
@@ -392,6 +417,10 @@ class HybridDataStore:
 
         # Execute in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
+
+        if not self._duck_conn:
+            raise RuntimeError("DuckDB not initialized")
+
         result = await loop.run_in_executor(None, lambda: self._duck_conn.execute(query).pl())
 
         return result
@@ -403,6 +432,8 @@ class HybridDataStore:
             return False
 
         try:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
             await self._sqlite_conn.execute("SELECT 1")
             return True
         except Exception:
@@ -602,6 +633,9 @@ class HybridDataStore:
             conditions.append(f"page LIKE '%{url_filter}%'")
         where_clause = " AND ".join(conditions)
 
+        if not self._duck_conn:
+            raise RuntimeError("DuckDB not initialized")
+
         # DuckDB query with window functions for efficient keyword aggregation
         query = f"""
         WITH page_stats AS (
@@ -657,7 +691,7 @@ class HybridDataStore:
         yield "url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count\n"
 
         # Stream results using DuckDB's efficient execution
-        def execute_query() -> duckdb.DuckDBPyResult:
+        def execute_query() -> Any:  # DuckDBPyResult
             return self._duck_conn.execute(query)
 
         result = await loop.run_in_executor(None, execute_query)
@@ -760,7 +794,7 @@ class HybridDataStore:
         date_range: tuple[str, str],
         queries: list[str] | None = None,
         pages: list[str] | None = None,
-        group_by: list[str] = None,
+        group_by: list[str] | None = None,
         limit: int = 1000,
         exact_match: bool = True,
     ) -> dict[str, Any]:
@@ -838,6 +872,10 @@ class HybridDataStore:
 
         # Execute query
         loop = asyncio.get_event_loop()
+
+        if not self._duck_conn:
+            raise RuntimeError("DuckDB not initialized")
+
         df = await loop.run_in_executor(None, lambda: self._duck_conn.execute(query, params).pl())
 
         # Format results with proper typing
@@ -859,7 +897,7 @@ class HybridDataStore:
                 clicks=int(row["clicks"]),
                 impressions=int(row["impressions"]),
                 ctr=round(float(row["ctr"]), 4),
-                position=round(float(weighted_pos), 2),  # 使用處理過的值
+                position=round(weighted_pos, 2),  # 使用處理過的值
                 rank_by_clicks=int(row.get("rank_by_clicks", 0)),
                 percentile_clicks=float(row.get("percentile_clicks", 0.0)),
             )
@@ -999,12 +1037,20 @@ class HybridDataStore:
         cursor = await self._sqlite_conn.execute(agg_query, params[:-1])  # Remove limit param
         agg_row = await cursor.fetchone()
 
-        aggregations = PerformanceMetrics(
-            clicks=int(agg_row[0]) if agg_row[0] else 0,
-            impressions=int(agg_row[1]) if agg_row[1] else 0,
-            ctr=float(agg_row[2]) if agg_row[2] else 0.0,
-            position=float(agg_row[3]) if agg_row[3] else 0.0,
-        )
+        if agg_row:
+            aggregations = PerformanceMetrics(
+                clicks=int(agg_row[0]) if agg_row[0] else 0,
+                impressions=int(agg_row[1]) if agg_row[1] else 0,
+                ctr=float(agg_row[2]) if agg_row[2] else 0.0,
+                position=float(agg_row[3]) if agg_row[3] else 0.0,
+            )
+        else:
+            aggregations = PerformanceMetrics(
+                clicks=0,
+                impressions=0,
+                ctr=0.0,
+                position=0.0,
+            )
 
         return {"data": data, "total": total, "aggregations": aggregations}
 
@@ -1023,4 +1069,8 @@ class HybridDataStore:
         """
 
         loop = asyncio.get_event_loop()
+
+        if not self._duck_conn:
+            raise RuntimeError("DuckDB not initialized")
+
         await loop.run_in_executor(None, self._duck_conn.execute, query)

@@ -1,5 +1,6 @@
 """Litestar application with high-performance API endpoints."""
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from litestar import Litestar, get
@@ -8,6 +9,7 @@ from litestar.config.cors import CORSConfig
 from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.openapi import OpenAPIConfig
+from litestar.openapi.datastructures import Server
 from litestar.openapi.plugins import SwaggerRenderPlugin
 from litestar.response import Redirect
 
@@ -22,7 +24,7 @@ from .routes import analytics_router, sites_router, sync_router
 
 
 @asynccontextmanager
-async def lifespan(app: Litestar):
+async def lifespan(app: Litestar) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
     # Startup
     settings = get_settings()
@@ -90,10 +92,10 @@ def create_app() -> Litestar:
         version="2.0.0",
         description="Modern API for Google Search Console data management and analytics",
         servers=[
-            {
-                "url": f"http://{settings.api_host}:{settings.api_port}",
-                "description": "Local server",
-            }
+            Server(
+                url=f"http://{settings.api_host}:{settings.api_port}",
+                description="Local server",
+            )
         ],
         use_handler_docstrings=True,  # Include handler docstrings in OpenAPI
         path="/schema",  # OpenAPI schema endpoint

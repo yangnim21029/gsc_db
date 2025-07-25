@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -90,7 +91,10 @@ class ModernGSCClient:
                 creds = await loop.run_in_executor(None, lambda: flow.run_local_server(port=0))
 
             # Save token
-            self.token_path.write_text(creds.to_json())
+            if creds:
+                self.token_path.write_text(creds.to_json())
+            else:
+                raise ValueError("Failed to obtain credentials")
 
         return creds
 
@@ -109,10 +113,13 @@ class ModernGSCClient:
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type((httpx.HTTPError, asyncio.TimeoutError)),
     )
-    async def _make_request(self, method: str, url: str, **kwargs) -> httpx.Response:
+    async def _make_request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """Make HTTP request with retry logic."""
         # Ensure credentials are valid
-        if self._creds.expired:
+        if self._creds and self._creds.expired:
+            self._creds = await self._get_credentials()
+
+        if not self._creds:
             self._creds = await self._get_credentials()
 
         # Add authorization header

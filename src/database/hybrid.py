@@ -167,8 +167,29 @@ class HybridDataStore:
                 raise RuntimeError("Database not initialized")
             await self._sqlite_conn.execute(index_sql)
 
-        # Update statistics
-        await self._sqlite_conn.execute("ANALYZE gsc_performance_data")
+        # Smart statistics update strategy
+        import os
+        from pathlib import Path
+
+        # Check if we need to run ANALYZE based on data freshness
+        should_analyze = True
+
+        if os.environ.get("GSC_DEV_MODE"):
+            # Development: skip ANALYZE for large databases to speed up startup
+            db_size = Path(self.sqlite_path).stat().st_size / (1024 * 1024)  # MB
+            if db_size > 10:  # Skip for databases larger than 10MB in dev mode (prepare for 200GB)
+                should_analyze = False
+                print(
+                    f"   Skipping ANALYZE for large database ({db_size:.1f}MB) in development mode"
+                )
+            else:
+                print(f"   Database size: {db_size:.1f}MB - proceeding with ANALYZE")
+
+        if should_analyze:
+            print("   Running database statistics analysis...")
+            await self._sqlite_conn.execute("ANALYZE gsc_performance_data")
+            print("   Statistics analysis complete")
+
         await self._sqlite_conn.commit()
 
     @asynccontextmanager

@@ -50,8 +50,8 @@ auth:
 # # [別名] 啟動開發伺服器。
 dev-server:
     @echo "🧑‍💻 啟動 Litestar 開發模式伺服器 (自動重載) 於 http://127.0.0.1:8000"
-    @echo "📊 使用測試數據庫: data/gsc_data.db"
-    @GSC_DEV_MODE=1 poetry run uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000 --log-level debug
+    @echo "📊 使用測試數據庫: data/gsc-data.db"
+    @GSC_DEV_MODE=1 poetry run uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000 --log-level info --reload-dir src
 
 # # [別名] 啟動生產伺服器。
 prod-server:

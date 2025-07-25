@@ -11,8 +11,7 @@ from litestar.di import Provide
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import SwaggerRenderPlugin
 from litestar.openapi.spec import Server
-from litestar.response import Redirect
-from litestar.response import Response
+from litestar.response import Redirect, Response
 from litestar.status_codes import HTTP_404_NOT_FOUND
 
 from ..config import get_settings
@@ -29,6 +28,7 @@ from .routes import analytics_router, sites_router, sync_router
 async def lifespan(app: Litestar) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
     # Startup
+    print("Starting application lifespan...")
     settings = get_settings()
 
     # Use test database in development mode
@@ -37,34 +37,39 @@ async def lifespan(app: Litestar) -> AsyncGenerator[None, None]:
 
     db_path = None
     if os.environ.get("GSC_DEV_MODE"):
-        test_db_path = Path("data/gsc_data.db")
+        test_db_path = Path("data/gsc-data.db")
         test_db_path.parent.mkdir(exist_ok=True)
         db_path = test_db_path
         print(f"Using test database: {db_path}")
 
-    # Initialize database
+    # Initialize database (DuckDB will be enabled based on settings)
+    print("Initializing database...")
     db = HybridDataStore(sqlite_path=db_path)
     await db.initialize()
     app.state.db = db
+    print("Database initialized successfully")
 
     # Initialize cache if enabled
     if settings.enable_cache:
+        print("Initializing cache...")
         cache = CacheService(settings.redis_url)
         await cache.initialize()
         app.state.cache = cache
+        print("Cache initialized successfully")
     else:
         app.state.cache = None
+        print("Cache disabled")
 
-    # Setup monitoring (disabled to avoid annoying warnings)
-    # if settings.enable_telemetry:
-    #     setup_monitoring()
+    print("Application startup complete")
 
     yield
 
     # Shutdown
+    print("Shutting down application...")
     await db.close()
     if app.state.cache:
         await app.state.cache.close()
+    print("Application shutdown complete")
 
 
 async def get_db(state: State) -> HybridDataStore:
@@ -172,7 +177,12 @@ async def docs_redirect() -> Redirect:
 
 
 @get(
-    ["/api/inngest", "/x/inngest", "/.netlify/functions/inngest", "/.redwood/functions/inngest"],
+    [
+        "/api/inngest",
+        "/x/inngest",
+        "/.netlify/functions/inngest",
+        "/.redwood/functions/inngest",
+    ],
     include_in_schema=False,
 )
 async def handle_inngest_probes() -> Response[None]:

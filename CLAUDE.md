@@ -4,251 +4,144 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GSC Database Manager is a modern enterprise-level Google Search Console data management and analysis platform built with Python 3.11+. It overcomes GSC's 16-month data retention limit by providing permanent local storage with high-performance analytics capabilities.
+This is a minimalist Google Search Console (GSC) data management system using Parquet files and DuckDB for storage and analytics. The design philosophy is "極簡設計，先跑起來再說" (minimalist design, get it running first).
 
-**Key Features:**
-- Hybrid SQLite + DuckDB database architecture for OLTP/OLAP operations
-- Modern async architecture with Litestar web framework
-- 808 RPS API capacity with msgspec serialization (5-10x faster than Pydantic)
-- Sequential GSC API processing (100% success rate vs 0% with concurrent)
-- Supports both daily and hourly data synchronization
+**Requirements**: Python 3.9 or higher
 
-## Development Commands
+## Key Commands
 
-### Initial Setup
+### Setup and Dependencies
+
 ```bash
-# Bootstrap project (creates directories, installs dependencies, sets up auth)
-just bootstrap
+# Using Poetry (recommended)
+poetry install
+poetry shell
 
-# Or individually:
-just init       # Create directory structure
-just setup      # Install dependencies with Poetry
-just auth       # Configure Google API authentication
-```
+# Or using pip
+pip install -r requirements.txt
 
-### Quality Assurance & Testing
-```bash
-# Run all checks before committing
-just check              # Runs lint + type-check + test
-
-# Individual checks
-just lint               # Ruff formatting and linting
-just type-check         # mypy static type checking
-just test               # pytest test suite
-just test-parallel      # Parallel test execution (may hang in some cases)
-
-# For pre-commit hooks (excludes lint)
-just check-commit
-
-# Run specific tests
-poetry run pytest tests/test_specific.py::test_function_name -v
-poetry run pytest --cov=src --cov-report=html
+# First time setup - requires client_secret.json from Google Console
+# The system will open a browser for OAuth authentication
 ```
 
 ### Data Synchronization
 
-**Critical: GSC API requires sequential processing. Never use concurrent requests.**
+```bash
+# Sync all historical data for a site (up to 16 months)
+python sync.py https://example.com
+python sync.py sc-domain:example.com
+
+# Or with Poetry
+poetry run gsc-sync https://example.com
+```
+
+### API Server
 
 ```bash
-# Single site sync
-just sync-site <site_id> [days] [sync_mode] [fast_mode]
-# Example: just sync-site 1 7          # Site 1, last 7 days, skip mode
-# Example: just sync-site 1 365 skip fast   # Fast mode for large historical data
+# Start Flask API server
+python app.py 5000
 
-# Multiple sites (sequential processing)
-just sync-multiple "1 3 5" [days] [sync_mode] [fast_mode]
-# Example: just sync-multiple "1 3 5" 14 overwrite
+# Or with Poetry
+poetry run gsc-api 5000
 
-# Hourly data sync (max 10 days due to GSC limits)
-just sync-hourly <site_id> [days] [sync_mode]
-just sync-hourly-multiple "1 3 5" [days] [sync_mode]
+# Start MCP service for Claude
+python gsc_mcp.py
 
-# Check sync status
-just sync-status            # All sites
-just sync-status <site_id>  # Specific site
-
-# Update database statistics for query optimization
-just analyze [table_name]
+# Or with Poetry
+poetry run gsc-mcp
 ```
 
-**Sync Modes:**
-- `skip` (default): Skip existing records, only insert new data
-- `overwrite`: Replace existing data (use for corrections)
+### Testing
 
-**Performance Modes:**
-- Standard Mode: Balanced performance and safety (default)
-- Fast Mode: Aggressive optimizations for old computers/slow storage (use `fast` parameter)
-
-### API Development
 ```bash
-# Development server with auto-reload
-just dev-server    # http://127.0.0.1:8000
+# Run tests
+python test.py
 
-# Production server
-just prod-server   # http://0.0.0.0:8000
+# Run with pytest (if tests are migrated)
+pytest tests/
 
-# API testing shortcuts
-just api-health
-just api-sites
-just api-site 1
-just api-sync-status-hostname example.com
-just api-query-search example.com "search term"
-just api-page-performance example.com
+# Run with coverage
+pytest --cov
 ```
 
-### Site Management
+### Development Tools
+
 ```bash
-# List all sites
-just site-list
-
-# Direct CLI usage
-poetry run python sync.py list
-poetry run python sync.py sync 17 365 skip --fast-mode
-poetry run python sync_multiple.py "1,3,5" 7 skip
+# Linting (configured for 120 char line length)
+ruff check .
+ruff format .
 ```
 
-## High-Level Architecture
+## Architecture and Design Patterns
 
-### Core Architecture Principles
+### Data Storage Structure
 
-1. **Hybrid Database Design**
-   - **SQLite**: Primary transactional storage (OLTP)
-   - **DuckDB**: Analytics engine attached to SQLite (OLAP)
-   - Seamless integration for complex queries with 10-100x performance gains
+- **Parquet files** organized by site and month: `data/{site_folder}/{YYYY-MM}/{YYYY-MM-DD}.parquet`
+- Site URLs are sanitized for folder names: `:` and `/` replaced with `_`
+- Each day's data is stored in a separate Parquet file
 
-2. **Sequential GSC API Processing**
-   - **Critical constraint**: GSC API has 0% success rate with concurrent requests
-   - All sync operations use `asyncio.Semaphore(1)` to ensure sequential execution
-   - 100% success rate with sequential processing
+### Core Components
 
-3. **Modern Async Stack**
-   - **Litestar**: High-performance async web framework (2-3x faster than FastAPI)
-   - **msgspec**: Ultra-fast serialization (5-10x faster than Pydantic)
-   - **httpx**: HTTP/2 support with retry logic
-   - **aiosqlite**: Async SQLite operations
+1. **sync.py** - GSC data synchronization
 
-### Directory Structure
+   - OAuth 2.0 authentication flow with browser-based initial setup
+   - Syncs up to 480 days (16 months) of historical data - GSC's retention limit
+   - Handles GSC API's 25,000 row limit with automatic pagination and batch processing
+   - Sequential processing (GSC API doesn't support concurrent requests)
+   - Rate limiting: 10-second pause every 10 requests
+   - Quota error handling: 15-minute retry on rate limit errors
+   - Automatically skips dates where Parquet files already exist
+   - Processes data chronologically from oldest to newest
 
-```
-src/
-├── api/              # Litestar API application
-│   ├── app.py       # Main application factory
-│   └── routers/     # API endpoint handlers
-├── database/        # Data access layer
-│   └── hybrid.py    # Hybrid SQLite+DuckDB implementation
-├── services/        # Business logic layer
-│   ├── gsc_client.py    # Google Search Console client
-│   └── sync_service.py  # Data synchronization logic
-├── models.py        # msgspec data models
-└── config.py        # Pydantic Settings configuration
-```
+2. **project_query.py** - Shared query functions
 
-### Key Design Patterns
+   - All SQL queries use `escape_sql_string()` for injection protection
+   - Common pattern: site URL → folder name → parquet path
+   - Key functions: `track_pages_query()`, `compare_periods()`, `query_intent_analysis()`
 
-1. **Dependency Injection**: Litestar's DI for database and cache management
-2. **Repository Pattern**: Clean separation between data access and business logic
-3. **Retry with Backoff**: Tenacity for handling transient API failures
-4. **Streaming Responses**: Memory-efficient CSV exports with async generators
-5. **Two-tier Caching**: Memory + Redis with cache-aside pattern
+3. **app.py** - Flask API endpoints
 
-### API Endpoint Structure
+   - `/track_pages` - Track specific pages and keywords
+   - `/compare_periods` - Compare time periods (week/month)
+   - `/pages_queries` - Get actual ranking keywords for specific pages
+   - `/intent_analysis_data` - Analyze search intent, returns CSV
 
-```
-/api/v1/
-├── /sites           # Site management
-├── /analytics       # Complex queries and trends
-├── /page-keyword-performance  # Page-level analysis
-└── /sync           # Synchronization management
-```
+4. **gsc_mcp.py** - MCP tools for Claude
+   - `query` - Execute arbitrary SQL queries
+   - `show_page_queries` - View search terms for a page
+   - `show_keyword_pages` - View pages ranking for keywords
+   - `search_keywords` - Query keywords matching patterns
+   - `best_pages` - Query best performing pages in time period
+   - `track_pages` - Track performance of specific pages/keywords
+   - `pages_queries` - Query actual ranking keywords for pages
+   - `compare_periods` - Compare performance across time periods
+   - Returns data as dictionaries for AI consumption
 
-All endpoints support both `hostname` and `site_id` parameters for flexibility.
+### Query Pattern
 
-### Configuration Management
+All queries follow this pattern:
 
-Environment variables override config values using `__` delimiter:
-```bash
-export GSC__PATHS__DATABASE=/custom/path/gsc.db
-export GSC__SYNC__BATCH_SIZE=1000
-export GSC__LOG__LEVEL=DEBUG
+```python
+# Convert site URL to folder path
+folder_name = site.replace(':', '_').replace('/', '_')
+parquet_path = f"data/{folder_name}/*/*.parquet"
+
+# Use DuckDB to query Parquet files
+conn = duckdb.connect()
+df = conn.execute(f"SELECT * FROM '{parquet_path}' WHERE ...").fetchdf()
 ```
 
-### Performance Optimizations
+### Authentication
 
-1. **Batch Processing**: Configurable batch sizes for bulk operations
-2. **Index Management**: Automatic index optimization during large imports
-3. **Fast Mode**: Aggressive SQLite pragmas for historical data loading
-4. **Streaming Exports**: DuckDB streaming for large result sets
-5. **Connection Pooling**: Efficient resource management
+- Uses OAuth 2.0 with token persistence (`token.pickle`)
+- Requires `client_secret.json` from Google Cloud Console
+- Token auto-refresh on expiration
 
-### Error Handling Strategy
+## Critical Design Decisions
 
-- **Exponential Backoff**: For transient GSC API failures
-- **Rate Limiting**: Respects GSC quotas with tracking
-- **Graceful Degradation**: Cache fallback when services unavailable
-- **Comprehensive Logging**: Structured logs with Rich console output
+1. **Sequential API Processing**: GSC API requires sequential requests - never attempt concurrent calls
+2. **Parquet + DuckDB**: Chosen for simplicity and performance - no database server needed
+3. **SQL Injection Protection**: All user inputs must go through `escape_sql_string()`
+4. **Minimalist Approach**: Add features only when needed, not preemptively
 
-## Important Implementation Notes
-
-### Critical Constraints
-
-1. **GSC API Sequential Processing**: This is non-negotiable. The codebase is designed around this limitation.
-2. **Data Processing Delay**: GSC data has a 2-3 day processing delay. Recent dates may return 403 errors.
-3. **Hourly Data Limits**: GSC only provides hourly data for the last 10 days.
-
-### Test Data Management
-
-- **Always use site_id: 3 (test.com) for testing**
-- Never use production site IDs in tests
-- Clean test data after testing: `python tests/clean_test_data.py --site-id 3 --days 7`
-
-### Database Considerations
-
-- File-based SQLite (not `:memory:`) for pytest-xdist compatibility
-- WAL mode enabled for concurrent reads
-- Thread-safe with `asyncio.Lock` protection
-- Automatic daily backups with 30-day retention
-
-### Development Patterns
-
-1. **Services are Singletons**: Injected via Litestar DI, never instantiated directly
-2. **All Operations are Async**: Use `await` throughout the codebase
-3. **Errors Should Bubble Up**: Let the framework handle error responses
-4. **Use Type Hints**: Full typing for better IDE support and type checking
-
-### Performance Benchmarks
-
-- API: 808 RPS peak capacity (30 concurrent users)
-- Query Performance: 10-100x improvement with DuckDB
-- Memory Usage: 50-70% reduction with Polars vs pandas
-- Sync Reliability: 100% success rate with sequential processing
-
-## Common Development Tasks
-
-### Adding a New API Endpoint
-
-1. Create router in `src/api/routers/`
-2. Define request/response models with msgspec
-3. Implement service method in appropriate service class
-4. Add router to app in `src/api/app.py`
-5. Update CHEATSHEET.md with new endpoint
-
-### Modifying Database Schema
-
-1. Update schema in `src/database/hybrid.py`
-2. Add migration logic if needed
-3. Update corresponding msgspec models
-4. Run tests to ensure compatibility
-
-### Debugging Sync Issues
-
-1. Check `logs/` directory for detailed logs
-2. Verify sequential processing is maintained
-3. Check for GSC API quota limits
-4. Use `--fast-mode` for large historical syncs
-
-## Monitoring and Observability
-
-- Health endpoint: `/health`
-- API documentation: `/docs` (Swagger UI)
-- OpenTelemetry instrumentation (optional)
-- Structured logging with log levels
+關於你說的都很有道理，但是，卻沒有很有用，我們應該做的事情應該是少到可能需要額外增加 10%~20% 才能補齊，而不是做那種包含 80% 未來不需要再優化的事情。

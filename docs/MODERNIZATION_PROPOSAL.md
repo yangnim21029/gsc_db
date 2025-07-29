@@ -205,7 +205,7 @@ class Settings(BaseSettings):
 
     # 資料庫設置
     database_path: Path = Field(
-        default=Path("./data/gsc_data.db"),
+        default=Path("./data/gsc-data.db"),
         description="SQLite database path"
     )
     enable_duckdb: bool = Field(default=True)

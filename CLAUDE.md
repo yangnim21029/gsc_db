@@ -383,3 +383,4 @@ The following test scripts have been updated to use test site (site_id: 3):
   - Added max_results parameter to CSV endpoint for result limiting
   - Created performance indexes for faster queries on large datasets
   - Replaced GROUP_CONCAT with efficient window functions to prevent memory issues
+- Legacy code should not be used, as it is old code that might need optimization. Consider moving legacy parts to `.legacy/` directory for future reference

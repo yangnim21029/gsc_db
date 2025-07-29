@@ -33,8 +33,12 @@ class HybridDataStore:
         self._duck_conn: duckdb.DuckDBPyConnection | None = None
         self._lock = asyncio.Lock()
 
-    async def initialize(self) -> None:
-        """Initialize database connections and create tables."""
+    async def initialize(self, skip_analyze: bool = False) -> None:
+        """Initialize database connections and create tables.
+
+        Args:
+            skip_analyze: Skip running ANALYZE on tables (useful for sync operations)
+        """
         async with self._lock:
             # Initialize SQLite
             self._sqlite_conn = await aiosqlite.connect(
@@ -55,14 +59,16 @@ class HybridDataStore:
             await self._create_tables()
 
             # Apply performance optimizations
-            await self._optimize_performance()
+            await self._optimize_performance(skip_analyze=skip_analyze)
 
             # Initialize DuckDB if enabled
             if self.enable_duckdb:
                 self._duck_conn = duckdb.connect(":memory:")
-                self._duck_conn.execute(f"""
+                self._duck_conn.execute(
+                    f"""
                     ATTACH DATABASE '{self.sqlite_path}' AS sqlite_db (TYPE SQLITE);
-                """)
+                """
+                )
 
     async def close(self) -> None:
         """Close all database connections."""
@@ -80,7 +86,8 @@ class HybridDataStore:
         if not self._sqlite_conn:
             raise RuntimeError("Database not initialized")
 
-        await self._sqlite_conn.execute("""
+        await self._sqlite_conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS sites (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 domain TEXT NOT NULL UNIQUE,
@@ -90,9 +97,11 @@ class HybridDataStore:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
 
-        await self._sqlite_conn.execute("""
+        await self._sqlite_conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS gsc_performance_data (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 site_id INTEGER NOT NULL,
@@ -109,9 +118,11 @@ class HybridDataStore:
                 FOREIGN KEY (site_id) REFERENCES sites(id),
                 UNIQUE(site_id, date, page, query, device, search_type)
             )
-        """)
+        """
+        )
 
-        await self._sqlite_conn.execute("""
+        await self._sqlite_conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS hourly_rankings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 site_id INTEGER NOT NULL,
@@ -127,28 +138,39 @@ class HybridDataStore:
                 FOREIGN KEY (site_id) REFERENCES sites(id),
                 UNIQUE(site_id, date, hour, query, page)
             )
-        """)
+        """
+        )
 
         # Create indexes for better performance
-        await self._sqlite_conn.execute("""
+        await self._sqlite_conn.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_performance_site_date
             ON gsc_performance_data(site_id, date)
-        """)
+        """
+        )
 
-        await self._sqlite_conn.execute("""
+        await self._sqlite_conn.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_performance_query
             ON gsc_performance_data(query)
-        """)
+        """
+        )
 
-        await self._sqlite_conn.execute("""
+        await self._sqlite_conn.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_hourly_site_date
             ON hourly_rankings(site_id, date, hour)
-        """)
+        """
+        )
 
         await self._sqlite_conn.commit()
 
-    async def _optimize_performance(self) -> None:
-        """Apply performance optimizations to the database."""
+    async def _optimize_performance(self, skip_analyze: bool = False) -> None:
+        """Apply performance optimizations to the database.
+
+        Args:
+            skip_analyze: Skip running ANALYZE on tables
+        """
         if not self._sqlite_conn:
             raise RuntimeError("Database not initialized")
 
@@ -172,9 +194,9 @@ class HybridDataStore:
         from pathlib import Path
 
         # Check if we need to run ANALYZE based on data freshness
-        should_analyze = True
+        should_analyze = not skip_analyze
 
-        if os.environ.get("GSC_DEV_MODE"):
+        if should_analyze and os.environ.get("GSC_DEV_MODE"):
             # Development: skip ANALYZE for large databases to speed up startup
             db_size = Path(self.sqlite_path).stat().st_size / (1024 * 1024)  # MB
             if db_size > 10:  # Skip for databases larger than 10MB in dev mode (prepare for 200GB)
@@ -335,6 +357,91 @@ class HybridDataStore:
 
         return stats
 
+    async def insert_performance_data_batch(
+        self, data: list[PerformanceData], mode: str = "skip"
+    ) -> dict[str, int]:
+        """
+        Insert performance data using executemany for better performance.
+
+        This is an optimized version that reduces I/O operations significantly.
+        """
+        stats = {"inserted": 0, "updated": 0, "skipped": 0}
+
+        if not data:
+            return stats
+
+        # Convert PerformanceData objects to tuples for executemany
+        records = [
+            (
+                record.site_id,
+                record.date,
+                record.page,
+                record.query,
+                record.device,
+                record.search_type,
+                record.clicks,
+                record.impressions,
+                record.ctr,
+                record.position,
+            )
+            for record in data
+        ]
+
+        async with self.transaction() as conn:
+            if mode == "skip":
+                # For skip mode, try batch insert first
+                try:
+                    await conn.executemany(
+                        """
+                        INSERT INTO gsc_performance_data
+                        (site_id, date, page, query, device, search_type,
+                         clicks, impressions, ctr, position)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        records,
+                    )
+                    stats["inserted"] = len(records)
+                except sqlite3.IntegrityError:
+                    # Fall back to individual inserts to track which ones fail
+                    for record in data:
+                        try:
+                            await conn.execute(
+                                """
+                                INSERT INTO gsc_performance_data
+                                (site_id, date, page, query, device, search_type,
+                                 clicks, impressions, ctr, position)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    record.site_id,
+                                    record.date,
+                                    record.page,
+                                    record.query,
+                                    record.device,
+                                    record.search_type,
+                                    record.clicks,
+                                    record.impressions,
+                                    record.ctr,
+                                    record.position,
+                                ),
+                            )
+                            stats["inserted"] += 1
+                        except sqlite3.IntegrityError:
+                            stats["skipped"] += 1
+            else:  # overwrite mode
+                await conn.executemany(
+                    """
+                    INSERT OR REPLACE INTO gsc_performance_data
+                    (site_id, date, page, query, device, search_type,
+                     clicks, impressions, ctr, position)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    records,
+                )
+                stats["inserted"] = len(records)
+
+        return stats
+
     async def insert_hourly_data(self, data: list[dict], mode: str = "skip") -> dict[str, int]:
         """
         Insert hourly ranking data with skip or overwrite mode.
@@ -488,7 +595,13 @@ class HybridDataStore:
 
     async def get_pragma_info(self) -> dict[str, Any]:
         """Get SQLite pragma settings."""
-        pragmas = ["journal_mode", "synchronous", "cache_size", "busy_timeout", "temp_store"]
+        pragmas = [
+            "journal_mode",
+            "synchronous",
+            "cache_size",
+            "busy_timeout",
+            "temp_store",
+        ]
 
         info = {}
         for pragma in pragmas:
@@ -507,12 +620,17 @@ class HybridDataStore:
             f"https://{hostname}",
             f"http://{hostname}",
             hostname.replace("www.", ""),
-            f"www.{hostname}" if not hostname.startswith("www.") else hostname.replace("www.", ""),
+            (
+                f"www.{hostname}"
+                if not hostname.startswith("www.")
+                else hostname.replace("www.", "")
+            ),
         ]
 
         for variant in domain_variants:
             cursor = await self._sqlite_conn.execute(
-                "SELECT * FROM sites WHERE domain = ? AND is_active = 1 LIMIT 1", (variant,)
+                "SELECT * FROM sites WHERE domain = ? AND is_active = 1 LIMIT 1",
+                (variant,),
             )
             row = await cursor.fetchone()
             if row:
@@ -529,7 +647,11 @@ class HybridDataStore:
         return None
 
     async def search_queries(
-        self, site_id: int, search_term: str, date_range: tuple[str, str], limit: int = 100
+        self,
+        site_id: int,
+        search_term: str,
+        date_range: tuple[str, str],
+        limit: int = 100,
     ) -> list[dict]:
         """Search queries containing the search term."""
         cursor = await self._sqlite_conn.execute(
@@ -630,34 +752,19 @@ class HybridDataStore:
             "total_keywords": sum(item["keyword_count"] for item in results),
         }
 
-    async def get_page_keyword_performance_stream(
-        self,
-        site_id: int,
-        date_range: tuple[str, str] | None = None,
-        url_filter: str | None = None,
-        limit: int | None = None,
-    ) -> AsyncGenerator[str, None]:
-        """Stream page-keyword performance data using DuckDB for efficient analytics."""
-        if not self.enable_duckdb:
-            # Fallback to SQLite streaming
-            async for line in self._sqlite_stream_performance(
-                site_id, date_range, url_filter, limit
-            ):
-                yield line
-            return
-
-        # Build WHERE conditions
+    def _build_performance_where_clause(
+        self, site_id: int, date_range: tuple[str, str] | None, url_filter: str | None
+    ) -> str:
+        """Build WHERE clause for performance query."""
         conditions = [f"site_id = {site_id}"]
         if date_range:
             conditions.append(f"date BETWEEN '{date_range[0]}' AND '{date_range[1]}'")
         if url_filter:
             conditions.append(f"page LIKE '%{url_filter}%'")
-        where_clause = " AND ".join(conditions)
+        return " AND ".join(conditions)
 
-        if not self._duck_conn:
-            raise RuntimeError("DuckDB not initialized")
-
-        # DuckDB query with window functions for efficient keyword aggregation
+    def _build_performance_query(self, where_clause: str, limit: int | None) -> str:
+        """Build the DuckDB performance query."""
         query = f"""
         WITH page_stats AS (
             SELECT
@@ -701,53 +808,45 @@ class HybridDataStore:
         LEFT JOIN page_keywords pk ON ps.url = pk.page
         ORDER BY ps.total_clicks DESC
         """
-
         if limit:
             query += f" LIMIT {limit}"
+        return query
 
-        # Execute in thread pool for non-blocking
+    async def _stream_duckdb_results(self, query: str) -> AsyncGenerator[str, None]:
+        """Stream results from DuckDB query."""
         loop = asyncio.get_event_loop()
 
-        # Yield header
-        yield "url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count\n"
-
-        # Stream results using DuckDB's efficient execution
         def execute_query() -> Any:  # DuckDBPyResult
             return self._duck_conn.execute(query)
 
         result = await loop.run_in_executor(None, execute_query)
 
-        # Stream results row by row
         while True:
             row = await loop.run_in_executor(None, result.fetchone)
             if not row:
                 break
-
             line = f'"{row[0]}",{row[1]},{row[2]},{row[3]:.4f},{row[4]:.2f},"{row[5]}",{row[6]}\n'
             yield line
 
-    async def _sqlite_stream_performance(
+    async def get_page_keyword_performance_stream(
         self,
         site_id: int,
         date_range: tuple[str, str] | None = None,
         url_filter: str | None = None,
         limit: int | None = None,
     ) -> AsyncGenerator[str, None]:
-        """Fallback SQLite streaming implementation."""
-        where_conditions = ["site_id = ?"]
-        params: list[Any] = [site_id]
+        """Stream page-keyword performance data using DuckDB for efficient analytics."""
+        # Handle SQLite fallback
+        if not self.enable_duckdb:
+            # Simple SQLite implementation without legacy module
+            conditions = [f"site_id = {site_id}"]
+            if date_range:
+                conditions.append(f"date BETWEEN '{date_range[0]}' AND '{date_range[1]}'")
+            if url_filter:
+                conditions.append(f"page LIKE '%{url_filter}%'")
+            where_clause = " AND ".join(conditions)
 
-        if date_range:
-            where_conditions.append("date BETWEEN ? AND ?")
-            params.extend(date_range)
-
-        if url_filter:
-            where_conditions.append("page LIKE ?")
-            params.append(f"%{url_filter}%")
-
-        where_clause = " AND ".join(where_conditions)
-
-        query = f"""
+            query = f"""
             SELECT
                 page as url,
                 SUM(clicks) as total_clicks,
@@ -761,40 +860,44 @@ class HybridDataStore:
             ORDER BY total_clicks DESC
             """
 
-        if limit:
-            query += f" LIMIT {limit}"
+            if limit:
+                query += f" LIMIT {limit}"
 
-        cursor = await self._sqlite_conn.execute(query, params)
+            if not self._sqlite_conn:
+                raise RuntimeError("SQLite connection not initialized")
 
+            cursor = await self._sqlite_conn.execute(query)
+
+            while True:
+                row = await cursor.fetchone()
+                if not row:
+                    break
+                # Format CSV line (simplified - no keywords for SQLite)
+                line = f'"{row[0]}",{row[1]},{row[2]},{row[3]:.4f},{row[4]:.2f},"",{row[5]}\n'
+                yield line
+            return
+
+        # Check DuckDB connection
+        if not self._duck_conn:
+            raise RuntimeError("DuckDB not initialized")
+
+        # Build query
+        where_clause = self._build_performance_where_clause(site_id, date_range, url_filter)
+        query = self._build_performance_query(where_clause, limit)
+
+        # Yield header
         yield "url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count\n"
 
-        async for row in cursor:
-            url = row[0]
-
-            # Fetch top 10 keywords efficiently with single query
-            keyword_query = """
-                SELECT query
-                FROM gsc_performance_data
-                WHERE site_id = ? AND page = ?
-                GROUP BY query
-                ORDER BY SUM(clicks) DESC
-                LIMIT 10
-            """
-
-            keyword_cursor = await self._sqlite_conn.execute(keyword_query, (site_id, url))
-            keywords = [kw[0] async for kw in keyword_cursor]
-            keywords_str = "|".join(keywords) if keywords else ""
-
-            line = (
-                f'"{url}",{row[1]},{row[2]},{row[3]:.4f},{row[4]:.2f},"{keywords_str}",{row[5]}\n'
-            )
+        # Stream results
+        async for line in self._stream_duckdb_results(query):
             yield line
 
     async def export_performance_csv(self, data: list[dict]) -> str:
         """Export performance data as CSV."""
         if not data:
             return (
-                "url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count\n"
+                "url,total_clicks,total_impressions,avg_ctr,avg_position,"
+                "keywords,keyword_count\n"
             )
 
         lines = ["url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count"]
@@ -951,129 +1054,82 @@ class HybridDataStore:
         pages: list[str] | None,
         group_by: list[str],
         limit: int,
-        exact_match: bool,
+        exact_match: bool = True,
     ) -> dict[str, Any]:
-        """Get ranking data using SQLite for simple queries."""
+        """Get ranking data using SQLite (simplified version)."""
         # Build WHERE clause
-        where_conditions = ["site_id = ?"]
-        params: list[Any] = [site_id]
+        conditions = [f"site_id = {site_id}"]
 
-        # Date range filter
-        where_conditions.append("date BETWEEN ? AND ?")
-        params.extend([date_range[0], date_range[1]])
+        if date_range:
+            conditions.append(f"date BETWEEN '{date_range[0]}' AND '{date_range[1]}'")
 
-        # Query filter
         if queries:
             if exact_match:
-                query_placeholders = ",".join("?" * len(queries))
-                where_conditions.append(f"query IN ({query_placeholders})")
-                params.extend(queries)
+                query_conditions = " OR ".join([f"query = '{q}'" for q in queries])
             else:
-                query_conditions = []
-                for query in queries:
-                    query_conditions.append("query LIKE ?")
-                    params.append(f"%{query}%")
-                where_conditions.append(f"({' OR '.join(query_conditions)})")
+                query_conditions = " OR ".join([f"query LIKE '%{q}%'" for q in queries])
+            conditions.append(f"({query_conditions})")
 
-        # Page filter
         if pages:
-            page_placeholders = ",".join("?" * len(pages))
-            where_conditions.append(f"page IN ({page_placeholders})")
-            params.extend(pages)
+            page_conditions = " OR ".join([f"page LIKE '%{p}%'" for p in pages])
+            conditions.append(f"({page_conditions})")
 
-        where_clause = " AND ".join(where_conditions)
+        where_clause = " AND ".join(conditions)
 
-        # Build GROUP BY clause
-        select_fields = []
-        for field in group_by:
-            select_fields.append(field)
-
-        # Add aggregation fields
-        select_fields.extend(
-            [
-                "SUM(clicks) as total_clicks",
-                "SUM(impressions) as total_impressions",
-                "AVG(ctr) as avg_ctr",
-                "AVG(position) as avg_position",
-            ]
-        )
-
-        select_clause = ", ".join(select_fields)
-        group_clause = ", ".join(group_by)
-
-        # Execute main query
+        # Simplified query without window functions
         query = f"""
-        SELECT {select_clause}
+        SELECT
+            query,
+            page,
+            SUM(clicks) as clicks,
+            SUM(impressions) as impressions,
+            AVG(ctr) as ctr,
+            AVG(position) as position,
+            COUNT(*) as days_appeared
         FROM gsc_performance_data
         WHERE {where_clause}
-        GROUP BY {group_clause}
-        ORDER BY total_clicks DESC
-        LIMIT ?
+        GROUP BY query, page
+        ORDER BY clicks DESC
+        LIMIT {limit}
         """
-        params.append(limit)
 
-        cursor = await self._sqlite_conn.execute(query, params)
+        if not self._sqlite_conn:
+            raise RuntimeError("SQLite connection not initialized")
+
+        cursor = await self._sqlite_conn.execute(query)
         rows = await cursor.fetchall()
 
-        # Format results with proper typing
+        # Format results
         from ..models import RankingDataItem
 
         data = []
-        for row in rows:
-            # Build base item with group_by fields
-            base_data = {}
-            for i, field in enumerate(group_by):
-                base_data[field] = row[i]
+        total_clicks = 0
+        total_impressions = 0
 
-            # Create properly typed item
+        for row in rows:
             item = RankingDataItem(
-                query=base_data.get("query"),
-                page=base_data.get("page"),
-                clicks=int(row[len(group_by)]),
-                impressions=int(row[len(group_by) + 1]),
-                ctr=round(float(row[len(group_by) + 2]), 4),
-                position=round(float(row[len(group_by) + 3]), 2),
+                query=row[0],
+                page=row[1],
+                clicks=int(row[2]),
+                impressions=int(row[3]),
+                ctr=round(float(row[4]), 4),
+                position=round(float(row[5]), 2),
+                weighted_position=round(float(row[5]), 2),  # Same as position for SQLite
+                days_appeared=int(row[6]),
             )
             data.append(item)
-
-        # Get total count without LIMIT
-        count_query = f"""
-        SELECT COUNT(DISTINCT {", ".join(group_by)})
-        FROM gsc_performance_data
-        WHERE {where_clause}
-        """
-        cursor = await self._sqlite_conn.execute(count_query, params[:-1])  # Remove limit param
-        total = (await cursor.fetchone())[0]
+            total_clicks += item.clicks
+            total_impressions += item.impressions
 
         # Calculate aggregations
-        agg_query = f"""
-        SELECT
-            SUM(clicks) as total_clicks,
-            SUM(impressions) as total_impressions,
-            AVG(ctr) as avg_ctr,
-            AVG(position) as avg_position
-        FROM gsc_performance_data
-        WHERE {where_clause}
-        """
-        cursor = await self._sqlite_conn.execute(agg_query, params[:-1])  # Remove limit param
-        agg_row = await cursor.fetchone()
+        aggregations = PerformanceMetrics(
+            clicks=total_clicks,
+            impressions=total_impressions,
+            ctr=float(total_clicks / max(total_impressions, 1)),
+            position=float(sum(d.position for d in data) / max(len(data), 1)),
+        )
 
-        if agg_row:
-            aggregations = PerformanceMetrics(
-                clicks=int(agg_row[0]) if agg_row[0] else 0,
-                impressions=int(agg_row[1]) if agg_row[1] else 0,
-                ctr=float(agg_row[2]) if agg_row[2] else 0.0,
-                position=float(agg_row[3]) if agg_row[3] else 0.0,
-            )
-        else:
-            aggregations = PerformanceMetrics(
-                clicks=0,
-                impressions=0,
-                ctr=0.0,
-                position=0.0,
-            )
-
-        return {"data": data, "total": total, "aggregations": aggregations}
+        return {"data": data, "total": len(data), "aggregations": aggregations}
 
     async def export_to_parquet(self, site_id: int, output_path: Path) -> None:
         """Export site data to Parquet format for archival."""
@@ -1095,3 +1151,82 @@ class HybridDataStore:
             raise RuntimeError("DuckDB not initialized")
 
         await loop.run_in_executor(None, self._duck_conn.execute, query)
+
+    # Index Management for Bulk Operations
+    async def drop_performance_indexes(self) -> None:
+        """Drop performance indexes for faster bulk inserts."""
+        async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
+
+            print("Dropping performance indexes for bulk insert...")
+
+            indexes_to_drop = [
+                "idx_performance_site_date",
+                "idx_performance_query",
+                "idx_gsc_performance_site_page_clicks",
+                "idx_gsc_performance_site_query_clicks",
+                "idx_gsc_performance_composite",
+            ]
+
+            for index_name in indexes_to_drop:
+                try:
+                    await self._sqlite_conn.execute(f"DROP INDEX IF EXISTS {index_name}")
+                except Exception as e:
+                    print(f"  Warning: Failed to drop index {index_name}: {e}")
+
+            await self._sqlite_conn.commit()
+            print("Performance indexes dropped successfully")
+
+    async def recreate_performance_indexes(self) -> None:
+        """Recreate performance indexes after bulk insert."""
+        async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
+
+            print("Recreating performance indexes...")
+
+            indexes_to_create = [
+                """CREATE INDEX IF NOT EXISTS idx_performance_site_date
+                   ON gsc_performance_data(site_id, date)""",
+                """CREATE INDEX IF NOT EXISTS idx_performance_query
+                   ON gsc_performance_data(query)""",
+                """CREATE INDEX IF NOT EXISTS idx_gsc_performance_site_page_clicks
+                   ON gsc_performance_data(site_id, page, clicks DESC)""",
+                """CREATE INDEX IF NOT EXISTS idx_gsc_performance_site_query_clicks
+                   ON gsc_performance_data(site_id, query, clicks DESC)""",
+                """CREATE INDEX IF NOT EXISTS idx_gsc_performance_composite
+                   ON gsc_performance_data(site_id, date, page, query, clicks DESC)""",
+            ]
+
+            for i, index_sql in enumerate(indexes_to_create, 1):
+                print(f"  Creating index {i}/{len(indexes_to_create)}...")
+                await self._sqlite_conn.execute(index_sql)
+
+            await self._sqlite_conn.commit()
+            print("Performance indexes recreated successfully")
+
+    async def set_fast_insert_mode(self, enabled: bool = True) -> None:
+        """Enable or disable fast insert mode for bulk operations."""
+        async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
+
+            if enabled:
+                print("Enabling fast insert mode...")
+                # Disable synchronous writes temporarily
+                await self._sqlite_conn.execute("PRAGMA synchronous = OFF")
+                # Increase cache size
+                await self._sqlite_conn.execute("PRAGMA cache_size = 50000")
+                # Use memory for temporary tables
+                await self._sqlite_conn.execute("PRAGMA temp_store = MEMORY")
+                # Disable foreign key checks
+                await self._sqlite_conn.execute("PRAGMA foreign_keys = OFF")
+                print("Fast insert mode enabled")
+            else:
+                print("Disabling fast insert mode...")
+                # Restore safe settings
+                await self._sqlite_conn.execute("PRAGMA synchronous = NORMAL")
+                await self._sqlite_conn.execute("PRAGMA cache_size = 10000")
+                await self._sqlite_conn.execute("PRAGMA foreign_keys = ON")
+                print("Fast insert mode disabled")

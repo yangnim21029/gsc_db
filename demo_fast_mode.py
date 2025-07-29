@@ -44,8 +44,8 @@ def simulate_io_operations():
     old_time = len(test_records) * 0.01  # 10ms per operation on HDD
     print(f"Records: {len(test_records):,}")
     print(f"I/O Operations: {old_io_ops:,}")
-    print(f"Estimated Time: {old_time:.1f} seconds ({old_time/60:.1f} minutes)")
-    print(f"Operations/sec: {len(test_records)/old_time:.0f}")
+    print(f"Estimated Time: {old_time:.1f} seconds ({old_time / 60:.1f} minutes)")
+    print(f"Operations/sec: {len(test_records) / old_time:.0f}")
 
     print("\n✅ NEW METHOD: Batch Insert with Fast Mode")
     print("─" * 50)
@@ -57,17 +57,17 @@ def simulate_io_operations():
     print(f"Records: {len(test_records):,}")
     print(f"I/O Operations: {new_io_ops:,}")
     print(f"Estimated Time: {new_time:.1f} seconds")
-    print(f"Operations/sec: {len(test_records)/new_time:.0f}")
+    print(f"Operations/sec: {len(test_records) / new_time:.0f}")
 
-    print(f"\n📊 IMPROVEMENT: {old_time/new_time:.1f}x faster!")
-    print(f"   I/O Reduction: {(1 - new_io_ops/old_io_ops)*100:.1f}%")
-    print(f"   Time Saved: {(old_time - new_time)/60:.1f} minutes per day")
+    print(f"\n📊 IMPROVEMENT: {old_time / new_time:.1f}x faster!")
+    print(f"   I/O Reduction: {(1 - new_io_ops / old_io_ops) * 100:.1f}%")
+    print(f"   Time Saved: {(old_time - new_time) / 60:.1f} minutes per day")
 
     # For 30 days
     print("\n📅 30-DAY SYNC COMPARISON:")
-    print(f"   Old Method: {(old_time * 30)/60:.1f} minutes")
-    print(f"   New Method: {(new_time * 30)/60:.1f} minutes")
-    print(f"   Time Saved: {((old_time - new_time) * 30)/60:.1f} minutes!")
+    print(f"   Old Method: {(old_time * 30) / 60:.1f} minutes")
+    print(f"   New Method: {(new_time * 30) / 60:.1f} minutes")
+    print(f"   Time Saved: {((old_time - new_time) * 30) / 60:.1f} minutes!")
 
 
 def show_optimization_features():

@@ -67,10 +67,7 @@ async def _determine_hourly_date_range(
     if resume:
         incomplete_sync = await progress_tracker.get_incomplete_sync(site_id, sync_type="hourly")
         if incomplete_sync:
-            print(
-                f"🔄 Resuming previous hourly sync from "
-                f"{incomplete_sync['last_completed_date']}"
-            )
+            print(f"🔄 Resuming previous hourly sync from {incomplete_sync['last_completed_date']}")
             print(
                 f"   Progress: {incomplete_sync['days_completed']}/"
                 f"{incomplete_sync['total_days_requested']} days"

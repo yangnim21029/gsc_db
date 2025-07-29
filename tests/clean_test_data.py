@@ -2,7 +2,6 @@
 """Manual test data cleanup script."""
 
 import argparse
-from datetime import datetime
 
 from src.utils.test_cleanup import TestDataCleaner
 
@@ -24,16 +23,14 @@ def main():
         action="store_true",
         help="Delete ALL data for the site (use with caution!)",
     )
-    parser.add_argument(
-        "--future", action="store_true", help="Also clean any future-dated data"
-    )
+    parser.add_argument("--future", action="store_true", help="Also clean any future-dated data")
 
     args = parser.parse_args()
 
     cleaner = TestDataCleaner()
 
-    print(f"🧹 GSC Test Data Cleanup Tool")
-    print(f"=" * 50)
+    print("🧹 GSC Test Data Cleanup Tool")
+    print("=" * 50)
     print(f"Site ID: {args.site_id}")
 
     if args.all:

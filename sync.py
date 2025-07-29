@@ -89,7 +89,7 @@ async def _fetch_daily_data(client, site_domain: str, current_date, batch_size: 
                 break
 
             daily_records.extend(daily_data)
-            print(f"    Fetched {len(daily_data)} records " f"(daily total: {len(daily_records)})")
+            print(f"    Fetched {len(daily_data)} records (daily total: {len(daily_records)})")
 
             if len(daily_data) < batch_size:
                 break
@@ -289,8 +289,7 @@ async def main():
         print("  python sync.py sync 17 7 overwrite     # Sync with overwrite mode")
         print("  python sync.py sync 17 183 --no-resume # Fresh 183-day sync")
         print(
-            "  python sync.py sync 17 183 --fast-mode "
-            "# Fast bulk sync (optimized for slow storage)"
+            "  python sync.py sync 17 183 --fast-mode # Fast bulk sync (optimized for slow storage)"
         )
         return
 

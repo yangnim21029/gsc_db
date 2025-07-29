@@ -122,19 +122,32 @@ async def execute_batch_insert(
     records: list[tuple[Any, ...]],
     mode: str = "skip",
 ) -> dict[str, int]:
-    """Execute batch insert with statistics."""
+    """Execute batch insert with statistics using executemany for performance."""
     stats = {"inserted": 0, "skipped": 0}
+
+    if not records:
+        return stats
+
     query = SQLBuilder.insert_or_replace(table, columns, mode)
 
-    for record in records:
+    # Use executemany for better performance
+    if mode == "skip":
+        # For skip mode, we need to handle integrity errors
+        # Try batch insert first, fall back to individual inserts if needed
         try:
-            await conn.execute(query, record)
-            stats["inserted"] += 1
+            await conn.executemany(query, records)
+            stats["inserted"] = len(records)
         except aiosqlite.IntegrityError:
-            if mode == "skip":
-                stats["skipped"] += 1
-            else:
-                # In overwrite mode, this shouldn't happen
-                raise
+            # Fall back to individual inserts to track which ones fail
+            for record in records:
+                try:
+                    await conn.execute(query, record)
+                    stats["inserted"] += 1
+                except aiosqlite.IntegrityError:
+                    stats["skipped"] += 1
+    else:
+        # For overwrite mode, executemany should work without issues
+        await conn.executemany(query, records)
+        stats["inserted"] = len(records)
 
     return stats

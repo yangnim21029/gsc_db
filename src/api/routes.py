@@ -78,7 +78,7 @@ async def get_ranking_data(
     # DEBUG: 如果遇到 500 錯誤，首先檢查這裡
     # 常見問題：hostname 為空字串 "" 或 None
     print(f"[DEBUG] ranking-data request - hostname: '{data.hostname}', site_id: {data.site_id}")
-    
+
     # Determine site_id from hostname if provided
     site_id = data.site_id
     if not site_id and data.hostname:

@@ -34,6 +34,32 @@ class Settings(BaseSettings):
     max_retries: int = Field(default=3, ge=1, le=10)
     rate_limit_per_minute: int = 60
 
+    # Batch Processing Settings
+    batch_insert_size: int = Field(
+        default=10000, ge=1000, le=50000, description="Number of records per batch insert"
+    )
+    buffer_flush_size: int = Field(
+        default=50000, ge=10000, le=200000, description="Buffer size before auto-flush"
+    )
+    buffer_flush_interval: float = Field(
+        default=30.0, ge=5.0, le=300.0, description="Maximum seconds before buffer auto-flush"
+    )
+    max_buffer_memory_mb: int = Field(
+        default=100, ge=10, le=1000, description="Maximum buffer memory usage in MB"
+    )
+    use_index_optimization: bool = Field(
+        default=True, description="Drop/recreate indexes for large bulk imports"
+    )
+    bulk_insert_threshold: int = Field(
+        default=100000,
+        ge=10000,
+        le=1000000,
+        description="Record count threshold to trigger index optimization",
+    )
+    enable_fast_mode: bool = Field(
+        default=False, description="Enable aggressive optimizations (less safe but faster)"
+    )
+
     # Cache Settings
     enable_cache: bool = (
         False  # Disabled Redis cache to avoid connection errors when Redis server not running

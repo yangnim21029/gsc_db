@@ -159,11 +159,11 @@ class PerformanceTrendsResponse(msgspec.Struct, kw_only=True):
 class PageKeywordPerformanceRequest(msgspec.Struct, kw_only=True):
     """Request for page-keyword performance data."""
 
-    site_id: int | None = None
+    site_id: int | None = 17
     hostname: str | None = None
-    days: int | None = None
-    query: str | None = None
-    limit: int | None = None  # Limit number of pages returned for performance
+    days: int | None = 183
+    url_filter: str | None = "/article"
+    limit: int | None = 400  # Limit number of pages returned for performance
 
 
 class PageKeywordPerformanceData(msgspec.Struct, kw_only=True):

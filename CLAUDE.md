@@ -75,6 +75,45 @@ just sync-status [site_id]              # View specific site status
 just maintenance
 ```
 
+### Performance Modes
+
+The system supports two performance modes for data synchronization:
+
+#### Standard Mode (Default)
+Optimized for general use with good balance of performance and safety:
+- Enhanced cache size (20,000 pages)
+- Memory-based temporary tables
+- Memory-mapped I/O (128MB)
+- Safe synchronous writes (NORMAL mode)
+- Suitable for daily syncs (1-30 days)
+
+#### Fast Mode
+Aggressive optimizations for old computers or slow storage:
+- Disabled synchronous writes (PRAGMA synchronous = OFF)
+- Large cache size (50,000 pages)
+- Extended memory mapping (256MB)
+- Disabled foreign key checks
+- Automatic index optimization for large batches
+- **Use with caution**: Less safe but 3-5x faster
+
+##### When to Use Fast Mode:
+- Syncing large historical data (>30 days)
+- Working on slow network storage
+- Initial database population
+- Old computers with limited resources
+
+##### How to Use Fast Mode:
+```bash
+# Single site with fast mode
+just sync-site 5 365 skip fast
+
+# Multiple sites with fast mode
+just sync-multiple "1 2 3" 180 skip fast
+
+# Direct command with fast mode
+python sync.py sync 17 365 --fast-mode
+```
+
 ### Sync Process Information
 
 The sync system uses sequential processing for reliability:

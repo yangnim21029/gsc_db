@@ -64,16 +64,28 @@ prod-server:
 site-list:
     @poetry run python sync.py list
 
-# # 為特定網站在指定天數內同步資料。 用法: `just sync-site <site_id> [days] [sync_mode]`
+# # 為特定網站在指定天數內同步資料。 用法: `just sync-site <site_id> [days] [sync_mode] [fast_mode]`
 # # sync_mode: skip (預設，跳過已存在) | overwrite (覆蓋已存在，用於修正)
-sync-site site_id days='7' sync_mode='skip':
-    @poetry run python sync.py sync {{ site_id }} {{ days }} {{ sync_mode }}
+# # fast_mode: 任何值啟用快速模式（適合舊電腦或大量資料）
+sync-site site_id days='7' sync_mode='skip' fast_mode='':
+    @if [ -n "{{ fast_mode }}" ]; then \
+        echo "🚀 使用快速模式同步..."; \
+        poetry run python sync.py sync {{ site_id }} {{ days }} {{ sync_mode }} --fast-mode; \
+    else \
+        poetry run python sync.py sync {{ site_id }} {{ days }} {{ sync_mode }}; \
+    fi
 
-# # 批次同步多個網站 (順序執行)。 用法: `just sync-multiple "1,2,3" [days] [sync_mode]`
+# # 批次同步多個網站 (順序執行)。 用法: `just sync-multiple "1,2,3" [days] [sync_mode] [fast_mode]`
 # # sync_mode: skip (預設) | overwrite (覆蓋模式)
+# # fast_mode: 任何值啟用快速模式
 # # 注意：GSC API 不支持並發，必須順序執行
-sync-multiple site_ids days='7' sync_mode='skip':
-    @poetry run python sync_multiple.py "{{ site_ids }}" {{ days }} {{ sync_mode }}
+sync-multiple site_ids days='7' sync_mode='skip' fast_mode='':
+    @if [ -n "{{ fast_mode }}" ]; then \
+        echo "🚀 使用快速模式批次同步..."; \
+        GSC__ENABLE_FAST_MODE=true poetry run python sync_multiple.py "{{ site_ids }}" {{ days }} {{ sync_mode }}; \
+    else \
+        poetry run python sync_multiple.py "{{ site_ids }}" {{ days }} {{ sync_mode }}; \
+    fi
 
 # # 為特定網站同步每小時資料。 用法: `just sync-hourly <site_id> [days] [sync_mode]`
 # # 注意：GSC API 限制每小時資料只能取得最近 10 天

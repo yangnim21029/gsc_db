@@ -56,6 +56,12 @@ class HybridDataStore:
 
             # Create performance indexes
             await self._optimize_performance()
+            
+            # Apply standard mode optimizations
+            settings = get_settings()
+            await self._sqlite_conn.execute(f"PRAGMA cache_size = {settings.standard_cache_size}")
+            await self._sqlite_conn.execute("PRAGMA temp_store = MEMORY")
+            await self._sqlite_conn.execute("PRAGMA mmap_size = 134217728")  # 128MB
 
             # Initialize DuckDB if enabled
             if self.enable_duckdb:
@@ -185,21 +191,21 @@ class HybridDataStore:
 
     async def update_statistics(self, table: str | None = None) -> None:
         """Update database statistics for query optimization.
-        
+
         Args:
             table: Specific table to analyze. If None, analyzes all tables.
         """
         async with self._lock:
             if not self._sqlite_conn:
                 raise RuntimeError("Database not initialized")
-            
+
             if table:
                 print(f"Updating statistics for table: {table}")
                 await self._sqlite_conn.execute(f"ANALYZE {table}")
             else:
                 print("Updating statistics for all tables...")
                 await self._sqlite_conn.execute("ANALYZE")
-            
+
             await self._sqlite_conn.commit()
             print("Statistics update complete")
 
@@ -885,8 +891,7 @@ class HybridDataStore:
         """Export performance data as CSV."""
         if not data:
             return (
-                "url,total_clicks,total_impressions,avg_ctr,avg_position,"
-                "keywords,keyword_count\n"
+                "url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count\n"
             )
 
         lines = ["url,total_clicks,total_impressions,avg_ctr,avg_position,keywords,keyword_count"]
@@ -1201,21 +1206,30 @@ class HybridDataStore:
             if not self._sqlite_conn:
                 raise RuntimeError("Database not initialized")
 
+            settings = get_settings()
+            
             if enabled:
                 print("Enabling fast insert mode...")
-                # Disable synchronous writes temporarily
+                # Disable synchronous writes temporarily (main performance boost)
                 await self._sqlite_conn.execute("PRAGMA synchronous = OFF")
-                # Increase cache size
+                # Increase cache size significantly
                 await self._sqlite_conn.execute("PRAGMA cache_size = 50000")
                 # Use memory for temporary tables
                 await self._sqlite_conn.execute("PRAGMA temp_store = MEMORY")
                 # Disable foreign key checks
                 await self._sqlite_conn.execute("PRAGMA foreign_keys = OFF")
+                # Additional optimizations for old computers
+                await self._sqlite_conn.execute("PRAGMA journal_size_limit = 67108864")  # 64MB
+                await self._sqlite_conn.execute("PRAGMA mmap_size = 268435456")  # 256MB
                 print("Fast insert mode enabled")
             else:
                 print("Disabling fast insert mode...")
-                # Restore safe settings
+                # Restore safe settings with standard optimizations
                 await self._sqlite_conn.execute("PRAGMA synchronous = NORMAL")
-                await self._sqlite_conn.execute("PRAGMA cache_size = 10000")
+                # Use standard cache size from config
+                await self._sqlite_conn.execute(f"PRAGMA cache_size = {settings.standard_cache_size}")
                 await self._sqlite_conn.execute("PRAGMA foreign_keys = ON")
+                # Keep some optimizations for standard mode
+                await self._sqlite_conn.execute("PRAGMA temp_store = MEMORY")
+                await self._sqlite_conn.execute("PRAGMA mmap_size = 134217728")  # 128MB
                 print("Fast insert mode disabled")

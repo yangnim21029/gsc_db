@@ -36,10 +36,10 @@ class Settings(BaseSettings):
 
     # Batch Processing Settings
     batch_insert_size: int = Field(
-        default=10000, ge=1000, le=50000, description="Number of records per batch insert"
+        default=25000, ge=1000, le=50000, description="Number of records per batch insert"
     )
     buffer_flush_size: int = Field(
-        default=50000, ge=10000, le=200000, description="Buffer size before auto-flush"
+        default=100000, ge=10000, le=200000, description="Buffer size before auto-flush"
     )
     buffer_flush_interval: float = Field(
         default=30.0, ge=5.0, le=300.0, description="Maximum seconds before buffer auto-flush"
@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     )
     enable_fast_mode: bool = Field(
         default=False, description="Enable aggressive optimizations (less safe but faster)"
+    )
+    standard_cache_size: int = Field(
+        default=20000, ge=5000, le=50000, description="Cache size for standard mode"
     )
 
     # Cache Settings

@@ -186,7 +186,8 @@ def analyze_results(ranking_results: list[dict], csv_results: list[dict]):
             sizes = [r["response_size"] for r in successful]
 
             print(
-                f"   Success rate: {len(successful)}/{len(results)} ({len(successful) / len(results) * 100:.1f}%)"
+                f"   Success rate: {len(successful)}/{len(results)} "
+                f"({len(successful) / len(results) * 100:.1f}%)"
             )
             print(f"   Min response time: {min(durations):.2f}ms")
             print(f"   Max response time: {max(durations):.2f}ms")
@@ -271,4 +272,5 @@ if __name__ == "__main__":
         # Clean up test data
         print("\n🧹 Cleaning up test data...")
         from src.utils.test_cleanup import cleanup_after_test
+
         cleanup_after_test(site_id=3, recent_days=2)

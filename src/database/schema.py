@@ -53,11 +53,15 @@ class DatabaseSchema:
             )
         """,
         indexes=[
-            "CREATE INDEX IF NOT EXISTS idx_performance_site_date ON gsc_performance_data(site_id, date)",
+            "CREATE INDEX IF NOT EXISTS idx_performance_site_date "
+            "ON gsc_performance_data(site_id, date)",
             "CREATE INDEX IF NOT EXISTS idx_performance_query ON gsc_performance_data(query)",
-            "CREATE INDEX IF NOT EXISTS idx_gsc_performance_site_page_clicks ON gsc_performance_data(site_id, page, clicks DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_gsc_performance_site_query_clicks ON gsc_performance_data(site_id, query, clicks DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_gsc_performance_composite ON gsc_performance_data(site_id, date, page, query, clicks DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_gsc_performance_site_page_clicks "
+            "ON gsc_performance_data(site_id, page, clicks DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_gsc_performance_site_query_clicks "
+            "ON gsc_performance_data(site_id, query, clicks DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_gsc_performance_composite "
+            "ON gsc_performance_data(site_id, date, page, query, clicks DESC)",
         ],
     )
 
@@ -81,7 +85,8 @@ class DatabaseSchema:
             )
         """,
         indexes=[
-            "CREATE INDEX IF NOT EXISTS idx_hourly_site_date ON hourly_rankings(site_id, date, hour)",
+            "CREATE INDEX IF NOT EXISTS idx_hourly_site_date "
+            "ON hourly_rankings(site_id, date, hour)",
         ],
     )
 

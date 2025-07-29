@@ -133,7 +133,8 @@ def test_single_site_query(service, site_url):
                 clicks = row.get("clicks", 0)
                 impressions = row.get("impressions", 0)
                 print(
-                    f"   {i + 1}. Query: {keys[0] if keys else 'N/A'}, Clicks: {clicks}, Impressions: {impressions}"
+                    f"   {i + 1}. Query: {keys[0] if keys else 'N/A'}, "
+                    f"Clicks: {clicks}, Impressions: {impressions}"
                 )
         else:
             print("⚠️ No data returned - this might be normal for recent dates")

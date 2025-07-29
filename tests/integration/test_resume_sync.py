@@ -12,7 +12,7 @@ from src.database.sync_progress import SyncProgressTracker
 
 async def show_sync_status():
     """Show current sync progress for all sites."""
-    tracker = SyncProgressTracker(Path("./data/gsc_data.db"))
+    tracker = SyncProgressTracker(Path("./data/gsc-data.db"))
     await tracker.initialize()
 
     try:
@@ -27,7 +27,8 @@ async def show_sync_status():
                 print(f"  Started: {progress['started_at']}")
                 print(f"  Last completed date: {progress['last_completed_date']}")
                 print(
-                    f"  Progress: {progress['days_completed']}/{progress['total_days_requested']} days"
+                    f"  Progress: {progress['days_completed']}/"
+                    f"{progress['total_days_requested']} days"
                 )
                 print(f"  Progress ID: {progress['progress_id']}")
                 print()

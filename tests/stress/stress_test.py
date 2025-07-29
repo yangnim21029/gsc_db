@@ -137,7 +137,8 @@ async def run_concurrent_stress_test(concurrent_users: int) -> dict[str, Any]:
 
         # Print summary
         print(
-            f"   ✅ {metrics['successful_requests']}/{metrics['total_requests']} requests successful ({metrics['success_rate']}%)"
+            f"   ✅ {metrics['successful_requests']}/{metrics['total_requests']} "
+            f"requests successful ({metrics['success_rate']}%)"
         )
         print(f"   ⚡ {metrics['requests_per_second']} requests/second")
         print(f"   🕐 Avg response time: {metrics['avg_response_time']}ms")
@@ -189,7 +190,8 @@ async def run_scalability_test():
         metrics = all_results[users]["metrics"]
         print(
             f"{users:<8} {metrics['success_rate']:<10} {metrics['requests_per_second']:<8} "
-            f"{metrics['avg_response_time']:<10} {metrics['min_response_time']:<10} {metrics['max_response_time']:<10}"
+            f"{metrics['avg_response_time']:<10} {metrics['min_response_time']:<10} "
+            f"{metrics['max_response_time']:<10}"
         )
 
         if metrics["requests_per_second"] > best_rps and metrics["success_rate"] > 95:
@@ -238,4 +240,5 @@ if __name__ == "__main__":
         # Clean up test data
         print("\n🧹 Cleaning up test data...")
         from src.utils.test_cleanup import cleanup_after_test
+
         cleanup_after_test(site_id=3, recent_days=2)

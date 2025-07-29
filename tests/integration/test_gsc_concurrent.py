@@ -79,7 +79,8 @@ async def test_single_site_sync(site_id: int, days: int = 1) -> dict[str, Any]:
                             ):
                                 if rows:
                                     print(
-                                        f"    {current_date}: Got {len(rows)} records for {device}/{search_type}"
+                                        f"    {current_date}: Got {len(rows)} records "
+                                        f"for {device}/{search_type}"
                                     )
                                     total_records += len(rows)
                                     break  # Just test one batch

@@ -132,7 +132,8 @@ class GSCAPITester:
         successful = sum(1 for r in processed_results if r["success"])
 
         print(
-            f"  ✅ Concurrent: {successful}/{len(processed_results)} successful in {total_time:.2f}s"
+            f"  ✅ Concurrent: {successful}/{len(processed_results)} successful "
+            f"in {total_time:.2f}s"
         )
 
         return {

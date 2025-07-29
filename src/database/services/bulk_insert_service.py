@@ -73,11 +73,13 @@ class BulkInsertService:
             await self.db.set_fast_insert_mode(False)
 
         # Run ANALYZE to update statistics
-        print("Updating database statistics...")
-        async with self.db._lock:
-            if self.db._sqlite_conn:
-                await self.db._sqlite_conn.execute("ANALYZE gsc_performance_data")
-                await self.db._sqlite_conn.commit()
+        # COMMENTED OUT: ANALYZE is too slow for large datasets (2M+ records)
+        # Run manually with 'just analyze' when needed
+        # print("Updating database statistics...")
+        # async with self.db._lock:
+        #     if self.db._sqlite_conn:
+        #         await self.db._sqlite_conn.execute("ANALYZE gsc_performance_data")
+        #         await self.db._sqlite_conn.commit()
 
         return self._total_stats
 

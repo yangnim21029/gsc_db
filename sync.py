@@ -112,14 +112,19 @@ async def _process_daily_records(daily_records, site_id: int, sync_mode: str, db
     for record in daily_records:
         record.site_id = site_id
 
+    # Store total records count before processing
+    total_records = len(daily_records)
+
     # Use bulk service if available, otherwise use direct insert
     if bulk_service:
         stats = await bulk_service.insert_day_data(daily_records, mode=sync_mode)
     else:
         stats = await db.insert_performance_data_batch(daily_records, mode=sync_mode)
 
+    # Show both total records processed and actual insertion stats
     print(
-        f"    Day complete: {stats['inserted']} inserted, "
+        f"    Day complete: {total_records} records processed → "
+        f"{stats['inserted']} inserted, "
         f"{stats.get('skipped', stats.get('updated', 0))} "
         f"{'skipped' if sync_mode == 'skip' else 'updated'}"
     )

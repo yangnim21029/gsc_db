@@ -1,4 +1,0 @@
-# Project commands
-
-# 已遷移到 gsc-db-refactor/ 目錄中的 justfile
-# 請切換到 gsc-db-refactor/ 目錄使用新的命令系統

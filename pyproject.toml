@@ -1,131 +1,45 @@
 [tool.poetry]
-name = "gsc-db-refactor"
-version = "2.0.0"
-description = "Modern GSC Database Manager with DuckDB analytics and async architecture"
+name = "gsc-data-manager"
+version = "0.1.0"
+description = "GSC Data Manager - Parquet + DuckDB 極簡版"
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
-packages = [{include = "src"}]
+packages = [{include = "*.py"}]
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.13"
-# Web Framework
-litestar = "^2.8.0"
-msgspec = "^0.18.0"
-uvicorn = "^0.27.0"
-
-# Database
-duckdb = "^0.10.0"
-polars = "^0.20.0"
-aiosqlite = "^0.19.0"
+python = "^3.9"
+pandas = "^2.0.0"
 pyarrow = "^14.0.0"
-numpy = "<2"
-
-# HTTP Client
-httpx = {extras = ["http2"], version = "^0.28.1"}
-
-# Cache
-redis = "^5.0.0"
-aiocache = "^0.12.0"
-
-# Console output (keep rich for display formatting)
-rich = "^13.7.0"
-
-# Configuration
-pydantic-settings = "^2.2.0"
-python-dotenv = "^1.0.0"
-
-# Google API
-google-api-python-client = "^2.120.0"
-google-auth-httplib2 = "^0.2.0"
-google-auth-oauthlib = "^1.2.0"
-
-# Monitoring
-opentelemetry-api = "^1.24.0"
-opentelemetry-instrumentation = "^0.45b0"
-opentelemetry-instrumentation-httpx = "^0.45b0"
-opentelemetry-instrumentation-sqlalchemy = "^0.45b0"
-prometheus-client = "^0.20.0"
-
-# Utilities
-tenacity = "^8.2.0"
-opentelemetry-exporter-prometheus = "0.45b0"
-opentelemetry-instrumentation-sqlite3 = "0.45b0"
+duckdb = "^0.9.0"
+google-api-python-client = "^2.100.0"
+google-auth = "^2.20.0"
+google-auth-oauthlib = "^1.0.0"
+google-auth-httplib2 = "^0.1.0"
+flask = "^3.0.0"
+mcp = "^0.1.0"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
-pytest-asyncio = "^0.23.0"
-pytest-cov = "^4.1.0"
-ruff = "^0.3.0"
-mypy = "^1.9.0"
-types-redis = "^4.6.0"
+pytest = "^7.0.0"
+pytest-cov = "^4.0.0"
+ruff = "^0.1.0"
+
+[tool.poetry.scripts]
+gsc-sync = "sync:main"
+gsc-api = "app:main"
+gsc-mcp = "gsc_mcp:main"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
-line-length = 100
-target-version = "py312"
-exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".git-rewrite",
-    ".hg",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".pytype",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "venv",
-    "legacy",  # Exclude legacy directory from linting
-]
+line-length = 120
+target-version = "py39"
 
 [tool.ruff.lint]
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "C",   # flake8-comprehensions
-    "B",   # flake8-bugbear
-    "UP",  # pyupgrade
-]
-ignore = []
-
-[tool.ruff.lint.isort]
-known-third-party = ["fastapi", "pydantic", "starlette"]
-
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
-minversion = "6.0"
-addopts = "-ra -q --strict-markers --asyncio-mode=auto"
 testpaths = ["tests"]
 python_files = "test_*.py"
-filterwarnings = [
-    "ignore::DeprecationWarning:aiosqlite.*"
-]

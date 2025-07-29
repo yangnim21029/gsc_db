@@ -90,10 +90,10 @@ sync-hourly-multiple site_ids days='2' sync_mode='skip':
 sync-status site_id='':
     @if [ -z "{{ site_id }}" ]; then \
         echo "📊 所有網站同步狀態:"; \
-        poetry run python -c "import asyncio; from src.database.hybrid import HybridDataStore; async def main(): db = HybridDataStore(); await db.initialize(); sites = await db.get_sites(); print('\\n網站列表:'); [print(f'{s.id:3d}: {s.name} ({s.domain})') for s in sites]; await db.close(); asyncio.run(main())"; \
+        poetry run python -c "import asyncio; from src.database.hybrid import HybridDataStore; db = HybridDataStore(); asyncio.run(db.initialize()); sites = asyncio.run(db.get_sites()); print('\n網站列表:'); [print(f'{s.id:3d}: {s.name} ({s.domain})') for s in sites]; asyncio.run(db.close())"; \
     else \
         echo "📊 網站 {{ site_id }} 同步狀態:"; \
-        poetry run python -c "import asyncio; from src.database.hybrid import HybridDataStore; from datetime import datetime, timedelta; async def main(): db = HybridDataStore(); await db.initialize(); site = await db.get_site_by_id({{ site_id }}); print(f'\\n網站: {site.name if site else \"未找到\"}'); coverage = await db.get_sync_coverage({{ site_id }}, 30) if site else {}; synced = sum(1 for v in coverage.values() if v); print(f'最近 30 天已同步: {synced}/30 天'); await db.close(); asyncio.run(main())"; \
+        poetry run python -c "import asyncio; from src.database.hybrid import HybridDataStore; from datetime import datetime, timedelta; db = HybridDataStore(); asyncio.run(db.initialize()); site = asyncio.run(db.get_site_by_id({{ site_id }})); print(f'\n網站: {site.name if site else \"未找到\"}'); coverage = asyncio.run(db.get_sync_coverage({{ site_id }}, 30)) if site else {}; synced = sum(1 for v in coverage.values() if v) if site else 0; print(f'最近 30 天已同步: {synced}/30 天') if site else None; asyncio.run(db.close())"; \
     fi
 
 # # 執行完整的每日維護程序 (同步、備份、清理)。

@@ -96,6 +96,16 @@ sync-status site_id='':
         poetry run python -c "import asyncio; from src.database.hybrid import HybridDataStore; from datetime import datetime, timedelta; db = HybridDataStore(); asyncio.run(db.initialize()); site = asyncio.run(db.get_site_by_id({{ site_id }})); print(f'\n網站: {site.name if site else \"未找到\"}'); coverage = asyncio.run(db.get_sync_coverage({{ site_id }}, 30)) if site else {}; synced = sum(1 for v in coverage.values() if v) if site else 0; print(f'最近 30 天已同步: {synced}/30 天') if site else None; asyncio.run(db.close())"; \
     fi
 
+# # 更新資料庫統計資訊以優化查詢效能。 用法: `just analyze [table]`
+analyze table='':
+    @echo "🔍 更新資料庫統計資訊..."
+    @if [ -z "{{ table }}" ]; then \
+        poetry run python -c "import asyncio; from src.database.hybrid import HybridDataStore; db = HybridDataStore(); asyncio.run(db.initialize()); asyncio.run(db.update_statistics()); asyncio.run(db.close())"; \
+    else \
+        poetry run python -c "import asyncio; from src.database.hybrid import HybridDataStore; db = HybridDataStore(); asyncio.run(db.initialize()); asyncio.run(db.update_statistics('{{ table }}')); asyncio.run(db.close())"; \
+    fi
+    @echo "✅ 統計更新完成"
+
 # # 執行完整的每日維護程序 (同步、備份、清理)。
 maintenance: _clean-backups
     @echo "\n✅ --- GSC 每日維護程序成功完成 ---"

@@ -33,12 +33,8 @@ class HybridDataStore:
         self._duck_conn: duckdb.DuckDBPyConnection | None = None
         self._lock = asyncio.Lock()
 
-    async def initialize(self, skip_analyze: bool = False) -> None:
-        """Initialize database connections and create tables.
-
-        Args:
-            skip_analyze: Skip running ANALYZE on tables (useful for sync operations)
-        """
+    async def initialize(self) -> None:
+        """Initialize database connections and create tables."""
         async with self._lock:
             # Initialize SQLite
             self._sqlite_conn = await aiosqlite.connect(
@@ -58,8 +54,8 @@ class HybridDataStore:
             # Create tables
             await self._create_tables()
 
-            # Apply performance optimizations
-            await self._optimize_performance(skip_analyze=skip_analyze)
+            # Create performance indexes
+            await self._optimize_performance()
 
             # Initialize DuckDB if enabled
             if self.enable_duckdb:
@@ -165,12 +161,8 @@ class HybridDataStore:
 
         await self._sqlite_conn.commit()
 
-    async def _optimize_performance(self, skip_analyze: bool = False) -> None:
-        """Apply performance optimizations to the database.
-
-        Args:
-            skip_analyze: Skip running ANALYZE on tables
-        """
+    async def _optimize_performance(self) -> None:
+        """Create performance indexes for the database."""
         if not self._sqlite_conn:
             raise RuntimeError("Database not initialized")
 
@@ -189,30 +181,27 @@ class HybridDataStore:
                 raise RuntimeError("Database not initialized")
             await self._sqlite_conn.execute(index_sql)
 
-        # Smart statistics update strategy
-        import os
-        from pathlib import Path
-
-        # Check if we need to run ANALYZE based on data freshness
-        should_analyze = not skip_analyze
-
-        if should_analyze and os.environ.get("GSC_DEV_MODE"):
-            # Development: skip ANALYZE for large databases to speed up startup
-            db_size = Path(self.sqlite_path).stat().st_size / (1024 * 1024)  # MB
-            if db_size > 10:  # Skip for databases larger than 10MB in dev mode (prepare for 200GB)
-                should_analyze = False
-                print(
-                    f"   Skipping ANALYZE for large database ({db_size:.1f}MB) in development mode"
-                )
-            else:
-                print(f"   Database size: {db_size:.1f}MB - proceeding with ANALYZE")
-
-        if should_analyze:
-            print("   Running database statistics analysis...")
-            await self._sqlite_conn.execute("ANALYZE gsc_performance_data")
-            print("   Statistics analysis complete")
-
         await self._sqlite_conn.commit()
+
+    async def update_statistics(self, table: str | None = None) -> None:
+        """Update database statistics for query optimization.
+        
+        Args:
+            table: Specific table to analyze. If None, analyzes all tables.
+        """
+        async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
+            
+            if table:
+                print(f"Updating statistics for table: {table}")
+                await self._sqlite_conn.execute(f"ANALYZE {table}")
+            else:
+                print("Updating statistics for all tables...")
+                await self._sqlite_conn.execute("ANALYZE")
+            
+            await self._sqlite_conn.commit()
+            print("Statistics update complete")
 
     @asynccontextmanager
     async def transaction(self) -> AsyncGenerator[aiosqlite.Connection, None]:

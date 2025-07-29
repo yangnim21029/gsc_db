@@ -19,7 +19,7 @@ from src.services.gsc_client import ModernGSCClient
 async def _initialize_sync_services(site_id: int, fast_mode: bool):
     """Initialize database, progress tracker, and bulk service."""
     db = HybridDataStore()
-    await db.initialize(skip_analyze=True)
+    await db.initialize()
 
     progress_tracker = SyncProgressTracker(Path("./data/gsc-data.db"))
     await progress_tracker.initialize()

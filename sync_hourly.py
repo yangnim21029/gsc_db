@@ -46,7 +46,7 @@ async def process_hourly_data(
 async def _initialize_hourly_sync_components(site_id: int):
     """Initialize database, progress tracker for hourly sync."""
     db = HybridDataStore()
-    await db.initialize(skip_analyze=True)
+    await db.initialize()
 
     progress_tracker = SyncProgressTracker(Path("./data/gsc-data.db"))
     await progress_tracker.initialize()

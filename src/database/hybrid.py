@@ -56,7 +56,7 @@ class HybridDataStore:
 
             # Create performance indexes
             await self._optimize_performance()
-            
+
             # Apply standard mode optimizations
             settings = get_settings()
             await self._sqlite_conn.execute(f"PRAGMA cache_size = {settings.standard_cache_size}")
@@ -1207,7 +1207,7 @@ class HybridDataStore:
                 raise RuntimeError("Database not initialized")
 
             settings = get_settings()
-            
+
             if enabled:
                 print("Enabling fast insert mode...")
                 # Disable synchronous writes temporarily (main performance boost)
@@ -1227,9 +1227,196 @@ class HybridDataStore:
                 # Restore safe settings with standard optimizations
                 await self._sqlite_conn.execute("PRAGMA synchronous = NORMAL")
                 # Use standard cache size from config
-                await self._sqlite_conn.execute(f"PRAGMA cache_size = {settings.standard_cache_size}")
+                await self._sqlite_conn.execute(
+                    f"PRAGMA cache_size = {settings.standard_cache_size}"
+                )
                 await self._sqlite_conn.execute("PRAGMA foreign_keys = ON")
                 # Keep some optimizations for standard mode
                 await self._sqlite_conn.execute("PRAGMA temp_store = MEMORY")
                 await self._sqlite_conn.execute("PRAGMA mmap_size = 134217728")  # 128MB
                 print("Fast insert mode disabled")
+
+    # Optimized query methods for common use cases
+    async def get_keyword_performance_fast(
+        self, site_id: int, keyword: str, days: int = 30, exact_match: bool = False
+    ) -> list[dict[str, Any]]:
+        """
+        Fast keyword performance query with minimal overhead.
+        Optimized for the most common use case of checking keyword trends.
+        """
+        async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
+
+            # Use index hint for better performance on large datasets
+            query_condition = "query = ?" if exact_match else "query LIKE ?"
+            keyword_param = keyword if exact_match else f"%{keyword}%"
+
+            # Optimized query with proper indexing
+            query = f"""
+            SELECT
+                date,
+                query,
+                AVG(position) as avg_position,
+                SUM(clicks) as total_clicks,
+                SUM(impressions) as total_impressions,
+                ROUND(SUM(clicks) * 100.0 / NULLIF(SUM(impressions), 0), 2) as ctr
+            FROM gsc_performance_data
+            WHERE site_id = ?
+            AND {query_condition}
+            AND date >= date('now', '-{days} days')
+            GROUP BY date, query
+            ORDER BY date DESC, total_clicks DESC
+            """
+
+            async with self._sqlite_conn.execute(query, [site_id, keyword_param]) as cursor:
+                rows = await cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description]
+
+            return [dict(zip(columns, row, strict=False)) for row in rows]
+
+    async def get_site_daily_summary_fast(
+        self, site_id: int, days: int = 30
+    ) -> list[dict[str, Any]]:
+        """
+        Fast daily summary query for site overview.
+        Pre-aggregated data for dashboard displays.
+        """
+        async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
+
+            # Single optimized query for all daily metrics
+            query = """
+            SELECT
+                date,
+                SUM(clicks) as total_clicks,
+                SUM(impressions) as total_impressions,
+                AVG(position) as avg_position,
+                ROUND(SUM(clicks) * 100.0 / NULLIF(SUM(impressions), 0), 2) as ctr,
+                COUNT(DISTINCT query) as unique_queries,
+                COUNT(DISTINCT page) as unique_pages
+            FROM gsc_performance_data
+            WHERE site_id = ?
+            AND date >= date('now', '-? days')
+            GROUP BY date
+            ORDER BY date DESC
+            """
+
+            async with self._sqlite_conn.execute(query, [site_id, days]) as cursor:
+                rows = await cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description]
+
+            return [dict(zip(columns, row, strict=False)) for row in rows]
+
+    async def get_top_queries_fast(
+        self, site_id: int, days: int = 7, limit: int = 50, min_clicks: int = 1
+    ) -> list[dict[str, Any]]:
+        """
+        Fast top queries retrieval with aggregation.
+        Optimized for quick performance overviews.
+        """
+        async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
+
+            query = """
+            SELECT
+                query,
+                SUM(clicks) as total_clicks,
+                SUM(impressions) as total_impressions,
+                AVG(position) as avg_position,
+                ROUND(SUM(clicks) * 100.0 / NULLIF(SUM(impressions), 0), 2) as ctr,
+                COUNT(DISTINCT page) as unique_pages
+            FROM gsc_performance_data
+            WHERE site_id = ?
+            AND date >= date('now', '-? days')
+            GROUP BY query
+            HAVING total_clicks >= ?
+            ORDER BY total_clicks DESC
+            LIMIT ?
+            """
+
+            async with self._sqlite_conn.execute(
+                query, [site_id, days, min_clicks, limit]
+            ) as cursor:
+                rows = await cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description]
+
+            return [dict(zip(columns, row, strict=False)) for row in rows]
+
+    async def get_page_keyword_summary_fast(
+        self, site_id: int, page_pattern: str = "", days: int = 30, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """
+        Fast page-keyword performance matrix.
+        Optimized for content analysis workflows.
+        """
+        async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
+
+            where_clause = "site_id = ? AND date >= date('now', '-? days')"
+            params = [site_id, days]
+
+            if page_pattern:
+                where_clause += " AND page LIKE ?"
+                params.append(f"%{page_pattern}%")
+
+            query = f"""
+            SELECT
+                page,
+                query as keyword,
+                AVG(position) as avg_position,
+                SUM(clicks) as total_clicks,
+                SUM(impressions) as total_impressions,
+                ROUND(AVG(ctr), 2) as avg_ctr
+            FROM gsc_performance_data
+            WHERE {where_clause}
+            GROUP BY page, query
+            HAVING total_impressions >= 5
+            ORDER BY total_clicks DESC, avg_position ASC
+            LIMIT ?
+            """
+
+            params.append(limit)
+
+            async with self._sqlite_conn.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description]
+
+            return [dict(zip(columns, row, strict=False)) for row in rows]
+
+    async def check_data_coverage_fast(self, site_id: int, days: int = 30) -> dict[str, Any]:
+        """
+        Quick data coverage check for sync status monitoring.
+        Returns summary statistics about data availability.
+        """
+        async with self._lock:
+            if not self._sqlite_conn:
+                raise RuntimeError("Database not initialized")
+
+            query = """
+            SELECT
+                COUNT(DISTINCT date) as days_with_data,
+                MIN(date) as earliest_date,
+                MAX(date) as latest_date,
+                SUM(clicks) as total_clicks,
+                COUNT(*) as total_records
+            FROM gsc_performance_data
+            WHERE site_id = ?
+            AND date >= date('now', '-? days')
+            """
+
+            async with self._sqlite_conn.execute(query, [site_id, days]) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return {"days_with_data": 0, "coverage_percent": 0}
+
+                columns = [desc[0] for desc in cursor.description]
+                result = dict(zip(columns, row, strict=False))
+
+                # Calculate coverage percentage
+                result["coverage_percent"] = round((result["days_with_data"] / days) * 100, 1)
+
+                return result

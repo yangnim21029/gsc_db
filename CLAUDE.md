@@ -4,183 +4,96 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GSC Database Manager is an enterprise-level Google Search Console data management and analysis tool written in Python. It provides permanent data storage beyond Google's 16-month limit, automated synchronization, hourly precision data, and API services for SEO analysis and AI-driven tools.
+GSC Database Manager is a modern enterprise-level Google Search Console data management and analysis platform built with Python 3.11+. It overcomes GSC's 16-month data retention limit by providing permanent local storage with high-performance analytics capabilities.
+
+**Key Features:**
+- Hybrid SQLite + DuckDB database architecture for OLTP/OLAP operations
+- Modern async architecture with Litestar web framework
+- 808 RPS API capacity with msgspec serialization (5-10x faster than Pydantic)
+- Sequential GSC API processing (100% success rate vs 0% with concurrent)
+- Supports both daily and hourly data synchronization
 
 ## Development Commands
 
-### Setup and Installation
+### Initial Setup
 ```bash
-# Initialize project structure (creates directories, checks environment)
-just init
-
-# Install dependencies
-just setup
-# or
-poetry install
-
-# Bootstrap project (init + install + auth)
+# Bootstrap project (creates directories, installs dependencies, sets up auth)
 just bootstrap
 
-# Google API authentication
-just auth
+# Or individually:
+just init       # Create directory structure
+just setup      # Install dependencies with Poetry
+just auth       # Configure Google API authentication
 ```
 
-### Quality Assurance
+### Quality Assurance & Testing
 ```bash
-# Run all quality checks (lint, type-check, test)
-just check
+# Run all checks before committing
+just check              # Runs lint + type-check + test
 
 # Individual checks
-just lint          # Code formatting with Ruff
-just type-check    # mypy type checking
-just test          # pytest test suite
-just test-parallel # parallel test execution (may hang in some cases)
+just lint               # Ruff formatting and linting
+just type-check         # mypy static type checking
+just test               # pytest test suite
+just test-parallel      # Parallel test execution (may hang in some cases)
 
-# Pre-commit checks only (excludes lint)
+# For pre-commit hooks (excludes lint)
 just check-commit
 
-# Run a specific test
+# Run specific tests
 poetry run pytest tests/test_specific.py::test_function_name -v
-
-# Run tests with coverage
 poetry run pytest --cov=src --cov-report=html
 ```
 
 ### Data Synchronization
+
+**Critical: GSC API requires sequential processing. Never use concurrent requests.**
+
 ```bash
-# Sync specific site for N days
-just sync-site <site_id> [days]
+# Single site sync
+just sync-site <site_id> [days] [sync_mode] [fast_mode]
+# Example: just sync-site 1 7          # Site 1, last 7 days, skip mode
+# Example: just sync-site 1 365 skip fast   # Fast mode for large historical data
 
-# Example: Sync site ID 1 for last 7 days
-just sync-site 1 7
+# Multiple sites (sequential processing)
+just sync-multiple "1 3 5" [days] [sync_mode] [fast_mode]
+# Example: just sync-multiple "1 3 5" 14 overwrite
 
-# Batch sync multiple sites
-just sync-multiple "1 3 5" [days]       # Sequential sync with progress tracking
+# Hourly data sync (max 10 days due to GSC limits)
+just sync-hourly <site_id> [days] [sync_mode]
+just sync-hourly-multiple "1 3 5" [days] [sync_mode]
 
-# Hourly data synchronization (last few days only)
-poetry run gsc-cli sync hourly <site_id> --days <days>
-just sync-hourly-multiple "1 3 5" [days]    # Multiple sites hourly sync
+# Check sync status
+just sync-status            # All sites
+just sync-status <site_id>  # Specific site
 
-# Example: Sync hourly data for site ID 5, last 2 days
-poetry run gsc-cli sync hourly 5 --days 2
-
-# Example: Sync multiple sites hourly data, last 1 day
-just sync-hourly-multiple "4 5 11 16" 1
-
-# Monitor sync progress and status
-just sync-status                         # View all sites sync status
-just sync-status [site_id]              # View specific site status
-
-# Full maintenance (sync all, backup, cleanup)
-just maintenance
+# Update database statistics for query optimization
+just analyze [table_name]
 ```
 
-### Performance Modes
+**Sync Modes:**
+- `skip` (default): Skip existing records, only insert new data
+- `overwrite`: Replace existing data (use for corrections)
 
-The system supports two performance modes for data synchronization:
+**Performance Modes:**
+- Standard Mode: Balanced performance and safety (default)
+- Fast Mode: Aggressive optimizations for old computers/slow storage (use `fast` parameter)
 
-#### Standard Mode (Default)
-Optimized for general use with good balance of performance and safety:
-- Enhanced cache size (20,000 pages)
-- Memory-based temporary tables
-- Memory-mapped I/O (128MB)
-- Safe synchronous writes (NORMAL mode)
-- Suitable for daily syncs (1-30 days)
-
-#### Fast Mode
-Aggressive optimizations for old computers or slow storage:
-- Disabled synchronous writes (PRAGMA synchronous = OFF)
-- Large cache size (50,000 pages)
-- Extended memory mapping (256MB)
-- Disabled foreign key checks
-- Automatic index optimization for large batches
-- **Use with caution**: Less safe but 3-5x faster
-
-##### When to Use Fast Mode:
-- Syncing large historical data (>30 days)
-- Working on slow network storage
-- Initial database population
-- Old computers with limited resources
-
-##### How to Use Fast Mode:
+### API Development
 ```bash
-# Single site with fast mode
-just sync-site 5 365 skip fast
+# Development server with auto-reload
+just dev-server    # http://127.0.0.1:8000
 
-# Multiple sites with fast mode
-just sync-multiple "1 2 3" 180 skip fast
+# Production server
+just prod-server   # http://0.0.0.0:8000
 
-# Direct command with fast mode
-python sync.py sync 17 365 --fast-mode
-```
-
-### Sync Process Information
-
-The sync system uses sequential processing for reliability:
-
-- **Sequential processing**: All sync operations are performed sequentially to ensure GSC API stability
-- **Progress tracking**: Real-time progress monitoring with detailed success/failure reporting
-- **Error handling**: Comprehensive error handling with intelligent recovery suggestions
-- **Cross-platform compatibility**: Works seamlessly on both Windows and Unix systems
-- **Data availability delay**: GSC daily data typically has a 2-3 day processing delay. Attempting to sync data from the last 3 days may result in HTTP 403 errors
-
-### Sync Modes
-
-The system supports two sync modes:
-
-- **skip** (default): Skip existing data, only insert new records
-- **overwrite**: Replace existing data with new data
-
-```bash
-# Use skip mode (default)
-poetry run gsc-cli sync daily --site-id 5 --days 7 --sync-mode skip
-
-# Use overwrite mode
-poetry run gsc-cli sync daily --site-id 5 --days 7 --sync-mode overwrite
-poetry run gsc-cli sync multiple "1 2 3" --days 7 --sync-mode overwrite
-```
-
-### Sync Status and Monitoring
-
-Use these commands to monitor sync progress:
-
-```bash
-# Check current sync status
-just sync-status
-
-# Monitor specific site
-just sync-status 5
-
-# View recent sync activity
-poetry run gsc-cli sync status
-```
-
-### Direct CLI Usage
-
-You can also use the CLI directly without the justfile:
-
-```bash
-# Site management
-poetry run gsc-cli site list
-poetry run gsc-cli site add "sc-domain:example.com"
-
-# Authentication
-poetry run gsc-cli auth login
-
-# Daily sync
-poetry run gsc-cli sync daily --site-id 5 --days 7
-poetry run gsc-cli sync daily --all-sites --days 3
-
-# Multiple site sync
-poetry run gsc-cli sync multiple "1 3 5" --days 14
-
-# Hourly sync
-poetry run gsc-cli sync hourly 5 --days 2 --force
-poetry run gsc-cli sync hourly-multiple "4 5 11 16" --days 1
-poetry run gsc-cli sync hourly-multiple "21 16" --days 2 --force
-
-# Analysis
-poetry run gsc-cli analyze report 5 --days 30
+# API testing shortcuts
+just api-health
+just api-sites
+just api-site 1
+just api-sync-status-hostname example.com
+just api-query-search example.com "search term"
+just api-page-performance example.com
 ```
 
 ### Site Management
@@ -188,238 +101,154 @@ poetry run gsc-cli analyze report 5 --days 30
 # List all sites
 just site-list
 
-# Add new site
-just site-add "sc-domain:example.com"
+# Direct CLI usage
+poetry run python sync.py list
+poetry run python sync.py sync 17 365 skip --fast-mode
+poetry run python sync_multiple.py "1,3,5" 7 skip
 ```
 
-### Data Analysis
+## High-Level Architecture
+
+### Core Architecture Principles
+
+1. **Hybrid Database Design**
+   - **SQLite**: Primary transactional storage (OLTP)
+   - **DuckDB**: Analytics engine attached to SQLite (OLAP)
+   - Seamless integration for complex queries with 10-100x performance gains
+
+2. **Sequential GSC API Processing**
+   - **Critical constraint**: GSC API has 0% success rate with concurrent requests
+   - All sync operations use `asyncio.Semaphore(1)` to ensure sequential execution
+   - 100% success rate with sequential processing
+
+3. **Modern Async Stack**
+   - **Litestar**: High-performance async web framework (2-3x faster than FastAPI)
+   - **msgspec**: Ultra-fast serialization (5-10x faster than Pydantic)
+   - **httpx**: HTTP/2 support with retry logic
+   - **aiosqlite**: Async SQLite operations
+
+### Directory Structure
+
+```
+src/
+├── api/              # Litestar API application
+│   ├── app.py       # Main application factory
+│   └── routers/     # API endpoint handlers
+├── database/        # Data access layer
+│   └── hybrid.py    # Hybrid SQLite+DuckDB implementation
+├── services/        # Business logic layer
+│   ├── gsc_client.py    # Google Search Console client
+│   └── sync_service.py  # Data synchronization logic
+├── models.py        # msgspec data models
+└── config.py        # Pydantic Settings configuration
+```
+
+### Key Design Patterns
+
+1. **Dependency Injection**: Litestar's DI for database and cache management
+2. **Repository Pattern**: Clean separation between data access and business logic
+3. **Retry with Backoff**: Tenacity for handling transient API failures
+4. **Streaming Responses**: Memory-efficient CSV exports with async generators
+5. **Two-tier Caching**: Memory + Redis with cache-aside pattern
+
+### API Endpoint Structure
+
+```
+/api/v1/
+├── /sites           # Site management
+├── /analytics       # Complex queries and trends
+├── /page-keyword-performance  # Page-level analysis
+└── /sync           # Synchronization management
+```
+
+All endpoints support both `hostname` and `site_id` parameters for flexibility.
+
+### Configuration Management
+
+Environment variables override config values using `__` delimiter:
 ```bash
-# Generate performance report for a site
-poetry run gsc-cli analyze report <site_id> --days <days>
-
-# Example: Generate 30-day report for site ID 5
-poetry run gsc-cli analyze report 5 --days 30
+export GSC__PATHS__DATABASE=/custom/path/gsc.db
+export GSC__SYNC__BATCH_SIZE=1000
+export GSC__LOG__LEVEL=DEBUG
 ```
 
-### API Development
-```bash
-# Start development server with auto-reload
-just dev-server
+### Performance Optimizations
 
-# Start production server
-just prod-server
-```
+1. **Batch Processing**: Configurable batch sizes for bulk operations
+2. **Index Management**: Automatic index optimization during large imports
+3. **Fast Mode**: Aggressive SQLite pragmas for historical data loading
+4. **Streaming Exports**: DuckDB streaming for large result sets
+5. **Connection Pooling**: Efficient resource management
 
-### Utilities
-```bash
-# Sitemap redundancy analysis
-just sitemap-redundancy --site-id <id>
-just sitemap-help
+### Error Handling Strategy
 
-# Backup management
-just list-large-backups [count]
-```
+- **Exponential Backoff**: For transient GSC API failures
+- **Rate Limiting**: Respects GSC quotas with tracking
+- **Graceful Degradation**: Cache fallback when services unavailable
+- **Comprehensive Logging**: Structured logs with Rich console output
 
-## Architecture Overview
+## Important Implementation Notes
 
-### Core Structure
-- **src/app.py**: Main CLI entry point using Typer with dependency injection context
-- **src/containers.py**: Dependency injection container using dependency-injector pattern
-  - Shared database connection with thread-safe locking
-  - Singleton services for all components
-  - Container instance passed through Typer context
-- **src/config.py**: Pydantic-based configuration management with TOML support
-  - Environment variable override with `__` delimiter for nested values
-  - Automatic path resolution relative to project root
+### Critical Constraints
 
-### Service Layer
-- **src/services/database.py**: SQLite database operations with thread-safe connection handling
-  - Single connection with `check_same_thread=False`
-  - `threading.RLock` for reentrant locking
-  - `isolation_level=None` for auto-commit mode
-  - Sync modes: skip (default) and overwrite
-- **src/services/gsc_client.py**: Google Search Console API client with retry logic
-  - Sequential processing with `max_workers=1` for API stability
-  - Exponential backoff retry with Tenacity
-  - Per-minute and daily quota tracking
-- **src/services/site_service.py**: Site management operations
-- **src/services/hourly_database.py**: Hourly data synchronization service
-- **src/services/analysis_service.py**: Data analysis and reporting
-- **src/services/data_aggregation_service.py**: Efficient batch data aggregation
+1. **GSC API Sequential Processing**: This is non-negotiable. The codebase is designed around this limitation.
+2. **Data Processing Delay**: GSC data has a 2-3 day processing delay. Recent dates may return 403 errors.
+3. **Hourly Data Limits**: GSC only provides hourly data for the last 10 days.
 
-### CLI Commands
-- **src/cli/commands.py**: Typer command definitions organized into sub-apps:
-  - auth_app: Google API authentication
-  - site_app: Site management
-  - sync_app: Data synchronization (daily/hourly with sequential processing)
-  - analyze_app: Data analysis and reporting
-  - All commands receive services via dependency injection
+### Test Data Management
 
-### Jobs
-- **src/jobs/bulk_data_synchronizer.py**: Batch sync orchestrator with progress tracking
+- **Always use site_id: 3 (test.com) for testing**
+- Never use production site IDs in tests
+- Clean test data after testing: `python tests/clean_test_data.py --site-id 3 --days 7`
 
-### Analysis Modules
-- **src/analysis/hourly_performance_analyzer.py**: Hourly traffic analysis
-- **src/analysis/interactive_data_visualizer.py**: Interactive data visualization
+### Database Considerations
 
-### Web API
-- **src/web/api.py**: FastAPI server for external integrations
-  - RESTful endpoints at `/api/v1/`
-  - Shared container instance with CLI
-  - Automatic OpenAPI documentation
-- **src/web/schemas.py**: Pydantic response models
-
-### Utilities
-- **src/utils/rich_console.py**: Rich terminal output configuration
-- **src/utils/system_health_check.py**: Network connectivity diagnostics
-- **src/utils/state_manager.py**: Application state management
-  - Sync progress tracking
-  - Last sync timestamps per site
-  - Recovery from interrupted syncs
-
-## Key Technologies
-
-### Core Stack
-- **Python 3.11+**: Required minimum version
-- **Poetry**: Dependency management and virtual environments
-- **Just**: Task runner (replaces Makefile)
-- **Typer**: CLI framework with type hints
-- **FastAPI**: Web API framework
-- **Pydantic**: Data validation and settings management
-
-### Database & APIs
-- **SQLite**: Local database with thread-safe operations
-- **Google API Client**: Search Console data access
-- **pandas**: Data manipulation and analysis
-
-### Development Tools
-- **Ruff**: Fast linting and code formatting
-- **mypy**: Static type checking
-- **pytest**: Testing framework with parallel execution support
-- **pre-commit**: Git hooks for quality assurance
-
-### Visualization & Reporting
-- **Rich**: Terminal output enhancement
-- **matplotlib/seaborn**: Statistical plotting
-- **plotly**: Interactive visualizations
-- **openpyxl**: Excel report generation
-
-## Configuration Management
-
-The project uses a hybrid configuration system:
-- **config.toml**: Base configuration file
-- **Pydantic Settings**: Type-safe configuration with environment variable override
-- **Environment Variables**: Runtime configuration override
-
-Configuration sections:
-- `paths`: File and directory locations
-- `log`: Logging configuration
-- `retry`: API retry settings
-- `sync`: Data synchronization settings
-
-## Threading and Concurrency
-
-The application uses sequential processing with careful resource management:
-- **SQLite connections**: `check_same_thread=False` with `threading.RLock`
-- **GSC API calls**: Sequential processing with `max_workers=1` to ensure API stability
-- **Tenacity**: Exponential backoff for API retry logic
-
-## Testing Strategy
-
-- **Unit tests**: Individual component testing
-- **Integration tests**: End-to-end workflow testing
-- **Concurrency tests**: Database lock and threading validation
-- **README functionality tests**: Automated validation of documented features
-
-## Error Handling
-
-- **SSL/TLS errors**: Automatic retry with exponential backoff
-- **API rate limits**: Built-in quota management
-- **Network connectivity**: Health checks with diagnostic reporting
-- **Database locks**: Proper resource cleanup and timeout handling
-
-## Important Notes
-
-### Critical Design Decisions
-
-1. **Sequential Processing is Intentional**: Never use parallel processing for GSC API calls. The `max_workers=1` setting prevents API rate limiting and SSL errors.
-
-2. **Database Locking Strategy**: All database operations must acquire the shared lock to prevent "database is locked" errors. The lock is reentrant to support nested operations.
-
-3. **Path Resolution**: All paths in configuration are resolved relative to the project root for portability.
-
-4. **Shared Container Instance**: The dependency injection container is shared between CLI and API to maintain singleton services.
-
-5. **File-based Test Databases**: Tests use file-based SQLite databases, not `:memory:`, for pytest-xdist compatibility.
-
-### Network Issues
-The application includes sophisticated network error handling for common GSC API issues:
-- SSL handshake failures with automatic retry
-- Connection timeouts with exponential backoff
-- Certificate validation errors with diagnostic messages
-- Health check system for connectivity troubleshooting
+- File-based SQLite (not `:memory:`) for pytest-xdist compatibility
+- WAL mode enabled for concurrent reads
+- Thread-safe with `asyncio.Lock` protection
+- Automatic daily backups with 30-day retention
 
 ### Development Patterns
 
-1. **Dependency Injection**: Services are injected via the container, never instantiated directly in commands.
+1. **Services are Singletons**: Injected via Litestar DI, never instantiated directly
+2. **All Operations are Async**: Use `await` throughout the codebase
+3. **Errors Should Bubble Up**: Let the framework handle error responses
+4. **Use Type Hints**: Full typing for better IDE support and type checking
 
-2. **Error Recovery**: All sync operations support resumption from the last successful state.
+### Performance Benchmarks
 
-3. **Quota Management**: API quotas are tracked per-minute and per-day with automatic reset logic.
+- API: 808 RPS peak capacity (30 concurrent users)
+- Query Performance: 10-100x improvement with DuckDB
+- Memory Usage: 50-70% reduction with Polars vs pandas
+- Sync Reliability: 100% success rate with sequential processing
 
-4. **Configuration Override**: Use environment variables like `GSC__PATHS__DATABASE` to override nested config values.
+## Common Development Tasks
 
-### Testing Considerations
+### Adding a New API Endpoint
 
-- Run `just test` for sequential tests or `just test-parallel` for parallel execution
-- Use `just check` before commits to run all quality checks
-- Integration tests validate actual GSC API interactions when credentials are available
-- README functionality tests ensure documentation accuracy
+1. Create router in `src/api/routers/`
+2. Define request/response models with msgspec
+3. Implement service method in appropriate service class
+4. Add router to app in `src/api/app.py`
+5. Update CHEATSHEET.md with new endpoint
 
-### Data Safety
-- Automatic daily backups to `data/backups/`
-- Compression of backup files with gzip
-- 30-day backup retention policy
-- Backup naming includes timestamp for easy identification
+### Modifying Database Schema
 
-## Test Data Management
+1. Update schema in `src/database/hybrid.py`
+2. Add migration logic if needed
+3. Update corresponding msgspec models
+4. Run tests to ensure compatibility
 
-### Important: Test Site Usage
-- **Always use site_id: 3 (test.com) for testing**
-- Never use production site IDs in test scripts (e.g., site_id: 17 for urbanlifehk.com)
-- Test scripts have been updated to use the test site
-- Clean up test data after testing to avoid data pollution
+### Debugging Sync Issues
 
-### Test Data Cleanup
-```bash
-# Clean test data from recent days
-python tests/clean_test_data.py --site-id 3 --days 7
+1. Check `logs/` directory for detailed logs
+2. Verify sequential processing is maintained
+3. Check for GSC API quota limits
+4. Use `--fast-mode` for large historical syncs
 
-# Clean all test data (use with caution)
-python tests/clean_test_data.py --site-id 3 --all
+## Monitoring and Observability
 
-# Clean future-dated data (likely test data)
-python tests/clean_test_data.py --future
-```
-
-### Modified Test Scripts
-The following test scripts have been updated to use test site (site_id: 3):
-- `tests/stress/stress_test.py` - Also includes automatic cleanup
-- `tests/performance/load_test.py` - Also includes automatic cleanup
-- `tests/integration/test_gsc_concurrent.py`
-- `tests/integration/test_resume_sync.py`
-- `tests/integration/test_gsc_limits.py`
-
-## Memories
-
-- First memory entry about project setup and configuration strategy
-- 2025-07-24: Fixed test data pollution issue - discovered test scripts were using production site_id 17, updated all scripts to use test site_id 3 instead
-- 2025-07-25: Improved dashboard performance by replacing Chart.js with lightweight SVG charts for data visualization
-- 2025-07-25: Reorganized test files into proper `tests/` directory structure following Python best practices
-- 2025-07-25: Fixed API issues and optimized CSV export performance:
-  - Added root path (/) and /docs redirect to fix 404 errors
-  - Implemented streaming CSV export using DuckDB analytics to handle large datasets efficiently
-  - Added max_results parameter to CSV endpoint for result limiting
-  - Created performance indexes for faster queries on large datasets
-  - Replaced GROUP_CONCAT with efficient window functions to prevent memory issues
-- Legacy code should not be used, as it is old code that might need optimization. Consider moving legacy parts to `.legacy/` directory for future reference
+- Health endpoint: `/health`
+- API documentation: `/docs` (Swagger UI)
+- OpenTelemetry instrumentation (optional)
+- Structured logging with log levels

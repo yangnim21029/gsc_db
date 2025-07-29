@@ -14,7 +14,6 @@ from ..models import (
     RankingDataRequest,
     RankingDataResponse,
     Site,
-    SyncRequest,
     SyncStatusResponse,
 )
 from ..services.cache import CacheService
@@ -232,50 +231,7 @@ async def get_sync_status(
     )
 
 
-@post("/sync/trigger", tags=["Sync"])
-async def trigger_sync(db: HybridDataStore, data: SyncRequest) -> dict[str, str]:
-    """
-    Trigger sync for a site with modern sync mode support.
-
-    Sync Modes:
-    - skip (default): Only insert new records, skip existing ones
-    - overwrite: Replace existing records (useful for data corrections)
-
-    IMPORTANT: GSC API requires sequential processing!
-    - Multiple concurrent sync requests will fail
-    - Use a job queue for multiple sites
-    - Tested: concurrent=0% success, sequential=100% success
-    """
-    # Determine site_id from hostname if provided
-    site_id = data.site_id
-    if not site_id and data.hostname:
-        site = await db.get_site_by_hostname(data.hostname)
-        if not site:
-            raise ValueError(f"Site not found for hostname: {data.hostname}")
-        site_id = site.id
-
-    if not site_id:
-        raise ValueError("Either site_id or hostname must be provided")
-
-    # In a real implementation, this would:
-    # 1. Queue a sync job with specified parameters
-    # 2. Call the sync script with proper mode
-    # 3. Return job tracking information
-
-    job_id = f"sync-{site_id}-{datetime.now().timestamp()}"
-
-    return {
-        "status": "queued",
-        "job_id": job_id,
-        "site_id": site_id,
-        "days": data.days,
-        "sync_mode": data.sync_mode.value,
-        "force": data.force,
-        "message": f"Sync job queued for site {site_id} with mode '{data.sync_mode.value}'",
-    }
-
-
 sync_router = Router(
     path="/api/v1",
-    route_handlers=[get_sync_status, trigger_sync],
+    route_handlers=[get_sync_status],
 )

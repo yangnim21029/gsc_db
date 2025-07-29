@@ -99,16 +99,7 @@ Note: The `query` parameter uses SQL LIKE pattern matching (`%pattern%`), so it 
 GET /api/v1/sync/status?hostname=example.com&days=30
 ```
 
-### Trigger Sync (Returns Job Info)
-```bash
-POST /api/v1/sync/trigger
-{
-  "hostname": "example.com",    # or use site_id
-  "days": 30,
-  "sync_mode": "skip",          # or "overwrite"
-  "force": false
-}
-```
+**Note:** Sync operations should be performed via CLI commands or direct scripts, not through API endpoints. Use the sync status endpoint above to monitor sync coverage.
 
 ## CLI Commands
 

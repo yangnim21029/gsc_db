@@ -86,7 +86,7 @@ def api_compare_periods():
 def main():
     import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-    app.run(debug=True, port=port)
+    app.run(debug=False, port=port)
 
 
 if __name__ == "__main__":

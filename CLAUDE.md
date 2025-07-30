@@ -145,3 +145,7 @@ df = conn.execute(f"SELECT * FROM '{parquet_path}' WHERE ...").fetchdf()
 4. **Minimalist Approach**: Add features only when needed, not preemptively
 
 關於你說的都很有道理，但是，卻沒有很有用，我們應該做的事情應該是少到可能需要額外增加 10%~20% 才能補齊，而不是做那種包含 80% 未來不需要再優化的事情。
+
+## Known Technical Limitations
+
+- pyarrow 是跟 numpy 有版本相容性問題

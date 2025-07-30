@@ -54,6 +54,7 @@ poetry run gsc-sync https://example.com
 ```
 
 特點：
+
 - 從最舊的資料開始同步
 - 已存在的檔案會自動跳過
 - 支援多站點（資料按站點分資料夾）
@@ -61,6 +62,7 @@ poetry run gsc-sync https://example.com
 - 配額管理（每 10 個請求休息，自動重試配額錯誤）
 
 資料結構：
+
 ```
 data/
 ├── sc-domain_example.com/
@@ -141,8 +143,8 @@ import duckdb
 
 conn = duckdb.connect()
 df = conn.execute("""
-    SELECT * FROM 'data/*/*/*/*.parquet' 
-    WHERE query ILIKE '%python%' 
+    SELECT * FROM 'data/*/*/*/*.parquet'
+    WHERE query ILIKE '%python%'
     AND clicks > 10
     ORDER BY date DESC
 """).fetchdf()
@@ -169,6 +171,7 @@ poetry run gsc-mcp
 ```
 
 提供的工具：
+
 - `query` - 執行任意 SQL（AI 可自由撰寫）
 - `show_page_queries` - 查看頁面的搜尋詞
 - `show_keyword_pages` - 查看關鍵字的排名頁面
@@ -176,7 +179,7 @@ poetry run gsc-mcp
 - `best_pages` - 查詢時間段內表現最好的頁面
 - `track_pages` - 追蹤一組頁面和關鍵字
 - `pages_queries` - 查詢頁面實際排名的關鍵字
-- `compare_periods` - 比較時間段（本週vs上週、本月vs上月）
+- `compare_periods` - 比較時間段（本週 vs 上週、本月 vs 上月）
 
 ## 測試
 
@@ -186,10 +189,13 @@ poetry run python test.py
 ```
 
 會測試：
+
 1. OAuth 認證和資料同步
 2. DuckDB 查詢
 3. API 服務
 
 ## 就這樣
 
-極簡設計，先跑起來再說。有問題再優化。
+關於上述這都很有道理，但是，卻沒有很有用，我們應該做的事情應該是少到可能需要額外增加 10%~20% 才能補齊，而不是做那種包含 80% 未來不需要再優化的事情。
+
+請勿創建新文件，除非超過 500 行

@@ -149,3 +149,7 @@ df = conn.execute(f"SELECT * FROM '{parquet_path}' WHERE ...").fetchdf()
 ## Known Technical Limitations
 
 - pyarrow 是跟 numpy 有版本相容性問題
+
+## Database Handling Notes
+
+- The message you need is DuckDB query returns NaN for divisions by zero, Backend should converts NaN to None/null

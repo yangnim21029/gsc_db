@@ -64,7 +64,7 @@ def sync_site(site_url):
 
     current_date = start_date
     requests_count = 0
-    
+
     while current_date <= end_date:
         date_str = current_date.strftime("%Y-%m-%d")
 
@@ -81,7 +81,7 @@ def sync_site(site_url):
             # 分批抓取資料（每批最多 25000 筆）
             all_rows = []
             start_row = 0
-            
+
             while True:
                 response = (
                     client.searchanalytics()
@@ -92,23 +92,20 @@ def sync_site(site_url):
                             "endDate": date_str,
                             "dimensions": ["query", "page", "device", "country"],
                             "rowLimit": 25000,
-                            "startRow": start_row
+                            "startRow": start_row,
                         },
                     )
                     .execute()
                 )
-                
+
                 rows = response.get("rows", [])
                 if not rows:
+                    print(f"沒有更多資料，停止抓取 {date_str}")
                     break
-                
+
                 all_rows.extend(rows)
                 start_row += len(rows)
-                
-                # 如果這批不滿 25000 筆，表示沒有更多資料了
-                if len(rows) < 25000:
-                    break
-            
+
             if not all_rows:
                 print(f"○ {date_str} 沒有資料")
                 current_date += timedelta(days=1)
@@ -139,9 +136,9 @@ def sync_site(site_url):
             df.to_parquet(file_path, engine="pyarrow", compression="snappy")
 
             print(f"✓ {date_str} ({len(df)} 筆)")
-            
+
             requests_count += 1
-            
+
             # 每 10 個請求休息一下（避免短期 quota）
             if requests_count % 10 == 0:
                 print("休息 10 秒...")
@@ -149,7 +146,7 @@ def sync_site(site_url):
 
         except Exception as e:
             error_msg = str(e).lower()
-            if 'quota' in error_msg or 'rate limit' in error_msg:
+            if "quota" in error_msg or "rate limit" in error_msg:
                 print(f"Quota 超過，休息 15 分鐘...")
                 time.sleep(900)  # 15 分鐘
                 # 重試這一天，不要增加日期

@@ -1,0 +1,2 @@
+poetry run python sync.py sc-domain:holidaysmart.io
+poetry run python list_sites.py

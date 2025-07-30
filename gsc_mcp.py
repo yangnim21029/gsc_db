@@ -8,6 +8,7 @@ import duckdb
 # Only import MCP when running as main module
 if __name__ == "__main__":
     from mcp.server.fastmcp import FastMCP
+
     mcp = FastMCP("gsc")
 else:
     # Create a dummy decorator for when imported as module
@@ -15,7 +16,9 @@ else:
         def tool(self):
             def decorator(func):
                 return func
+
             return decorator
+
     mcp = DummyMCP()
 
 
@@ -38,14 +41,14 @@ def get_parquet_path(site_url=None):
 @mcp.tool()
 def query(site: str, sql: str):
     """執行 SQL 查詢 GSC 數據
-    
+
     Args:
         site: 網站名稱（會轉換成資料夾名稱）
         sql: SQL 查詢，使用 {site} 作為資料表佔位符
-    
+
     Returns:
         查詢結果的字典列表
-    
+
     Example:
         sql = "SELECT * FROM {site} WHERE clicks > 100 ORDER BY date DESC LIMIT 10"
     """
@@ -58,17 +61,17 @@ def query(site: str, sql: str):
 @mcp.tool()
 def show_page_queries(site: str, page: str, days: int = 30):
     """看頁面的搜尋詞
-    
+
     Args:
         site: 網站 URL
         page: 頁面 URL
         days: 查詢最近幾天的資料（預設 30）
-    
+
     Returns:
         該頁面的搜尋詞列表，包含點擊、曝光、排名
     """
     date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-    
+
     return query(
         site,
         f"""
@@ -90,17 +93,17 @@ def show_page_queries(site: str, page: str, days: int = 30):
 @mcp.tool()
 def show_keyword_pages(site: str, keyword: str, days: int = 30):
     """看關鍵字排哪些頁
-    
+
     Args:
         site: 網站 URL
         keyword: 搜尋關鍵字
         days: 查詢最近幾天的資料（預設 30）
-    
+
     Returns:
         該關鍵字的頁面列表，包含平均排名和點擊數
     """
     date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-    
+
     return query(
         site,
         f"""
@@ -121,17 +124,17 @@ def show_keyword_pages(site: str, keyword: str, days: int = 30):
 @mcp.tool()
 def search_keywords(site: str, pattern: str, days: int = 30):
     """查詢包含特定模式的關鍵字
-    
+
     Args:
         site: 網站 URL
         pattern: 關鍵字模式（使用 SQL LIKE 語法，例如 "%python%"）
         days: 查詢最近幾天的資料（預設 30）
-    
+
     Returns:
         符合模式的關鍵字列表，包含點擊、曝光、平均排名
     """
     date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-    
+
     return query(
         site,
         f"""
@@ -153,17 +156,17 @@ def search_keywords(site: str, pattern: str, days: int = 30):
 @mcp.tool()
 def best_pages(site: str, days: int = 30, limit: int = 20):
     """查詢一個時間段內表現最好的頁面
-    
+
     Args:
         site: 網站 URL
         days: 查詢最近幾天的資料（預設 30）
         limit: 返回頁面數量（預設 20）
-    
+
     Returns:
         表現最好的頁面列表，按點擊數排序
     """
     date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-    
+
     return query(
         site,
         f"""
@@ -186,33 +189,35 @@ def best_pages(site: str, days: int = 30, limit: int = 20):
 
 
 @mcp.tool()
-def track_pages(site: str, pages: list[str], keywords: list[str] = [], days: int = 30):
+def track_pages(site: str, pages: list[str], keywords: list[str] | None = None, days: int = 30):
     """追蹤一組頁面和關鍵字
-    
+
     Args:
         site: 網站 URL
         pages: 要追蹤的頁面列表
         keywords: 要追蹤的關鍵字列表（可選）
         days: 查詢最近幾天的資料（預設 30）
-    
+
     Returns:
         頁面和關鍵字的效能資料
     """
     conn = duckdb.connect()
-    
+
     # 處理站點路徑
     folder_name = site.replace(":", "_").replace("/", "_")
     parquet_path = f"data/{folder_name}/*/*.parquet"
-    
+
     # 轉義並建立 IN 條件
-    pages_list = "','".join([escape_sql_string(p) for p in pages])
-    
+    escaped_pages = [escape_sql_string(p) for p in pages]
+    pages_list = "','".join([p for p in escaped_pages if p is not None])
+
     # 如果有指定關鍵字就加條件
     keyword_filter = ""
     if keywords and len(keywords) > 0:
-        keywords_list = "','".join([escape_sql_string(k) for k in keywords])
+        escaped_keywords = [escape_sql_string(k) for k in keywords]
+        keywords_list = "','".join([k for k in escaped_keywords if k is not None])
         keyword_filter = f"AND query IN ('{keywords_list}')"
-    
+
     query_sql = f"""
     SELECT 
         date,
@@ -229,30 +234,31 @@ def track_pages(site: str, pages: list[str], keywords: list[str] = [], days: int
     GROUP BY date, page, query
     ORDER BY date DESC, clicks DESC
     """
-    
+
     return conn.execute(query_sql).fetchdf().to_dict("records")
 
 
 @mcp.tool()
 def pages_queries(site: str, pages: list[str]):
     """查詢頁面實際排名的關鍵字
-    
+
     Args:
         site: 網站 URL
         pages: 要查詢的頁面列表
-    
+
     Returns:
         每個頁面的關鍵字列表
     """
     conn = duckdb.connect()
-    
+
     # 處理站點路徑
     folder_name = site.replace(":", "_").replace("/", "_")
     parquet_path = f"data/{folder_name}/*/*.parquet"
-    
+
     # 轉義並建立 IN 條件
-    pages_list = "','".join([escape_sql_string(p) for p in pages])
-    
+    escaped_pages = [escape_sql_string(p) for p in pages]
+    pages_list = "','".join([p for p in escaped_pages if p is not None])
+
     query_sql = f"""
     SELECT 
         page, 
@@ -265,26 +271,26 @@ def pages_queries(site: str, pages: list[str]):
     GROUP BY page, query
     ORDER BY page, impressions DESC
     """
-    
+
     return conn.execute(query_sql).fetchdf().to_dict("records")
 
 
 @mcp.tool()
 def compare_periods(site: str, period_type: str = "week", custom_periods: dict = {}):
     """比較兩個時期的 GSC 表現
-    
+
     Args:
         site: 站點名稱
         period_type: 比較類型 - "week"（本週vs上週）、"month"（本月vs上月）、"custom"（自訂）
         custom_periods: 自訂時期 {"period1": {"start": "2024-01-01", "end": "2024-01-07"}, ...}
-    
+
     Returns:
         時期比較的結果
     """
     conn = duckdb.connect()
     folder_name = site.replace(":", "_").replace("/", "_")
     parquet_path = f"data/{folder_name}/*/*.parquet"
-    
+
     # 決定時間段
     if period_type == "week":
         # 本週 vs 上週
@@ -293,24 +299,24 @@ def compare_periods(site: str, period_type: str = "week", custom_periods: dict =
         this_monday = today - timedelta(days=today.weekday())
         # 上週一
         last_monday = this_monday - timedelta(days=7)
-        
+
         period1_start = last_monday.strftime("%Y-%m-%d")
         period1_end = (this_monday - timedelta(days=1)).strftime("%Y-%m-%d")
         period2_start = this_monday.strftime("%Y-%m-%d")
         period2_end = today.strftime("%Y-%m-%d")
-        
+
     elif period_type == "month":
         # 本月 vs 上月
         today = datetime.now().date()
         this_month_start = today.replace(day=1)
         last_month_end = this_month_start - timedelta(days=1)
         last_month_start = last_month_end.replace(day=1)
-        
+
         period1_start = last_month_start.strftime("%Y-%m-%d")
         period1_end = last_month_end.strftime("%Y-%m-%d")
         period2_start = this_month_start.strftime("%Y-%m-%d")
         period2_end = today.strftime("%Y-%m-%d")
-        
+
     elif period_type == "custom" and len(custom_periods) > 0:
         period1_start = custom_periods["period1"]["start"]
         period1_end = custom_periods["period1"]["end"]
@@ -318,7 +324,7 @@ def compare_periods(site: str, period_type: str = "week", custom_periods: dict =
         period2_end = custom_periods["period2"]["end"]
     else:
         raise ValueError("Invalid period_type or missing custom_periods")
-    
+
     query_sql = f"""
     WITH period1 AS (
         SELECT 
@@ -362,15 +368,16 @@ def compare_periods(site: str, period_type: str = "week", custom_periods: dict =
         p2.unique_pages as period2_pages
     FROM period1 p1, period2 p2
     """
-    
+
     result = conn.execute(query_sql).fetchdf()
     return result.to_dict("records")[0] if len(result) > 0 else {}
 
 
 def main():
     from mcp.server.fastmcp import FastMCP
+
     real_mcp = FastMCP("gsc")
-    
+
     # Re-register all tools with the real MCP instance
     real_mcp.tool()(query)
     real_mcp.tool()(show_page_queries)
@@ -380,7 +387,7 @@ def main():
     real_mcp.tool()(track_pages)
     real_mcp.tool()(pages_queries)
     real_mcp.tool()(compare_periods)
-    
+
     real_mcp.run()
 
 

@@ -6,6 +6,7 @@ from flask import Flask, request, jsonify, make_response, render_template
 from flask_cors import CORS
 import io
 import os
+import math
 from pathlib import Path
 from dotenv import load_dotenv
 import openai
@@ -66,7 +67,6 @@ def api_query():
         )
         
         # Handle NaN values in results
-        import math
         for row in results:
             for key, value in row.items():
                 if isinstance(value, float) and math.isnan(value):
@@ -105,7 +105,11 @@ Return only the SQL query, nothing else."""
             temperature=0
         )
         
-        sql = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        if content is None:
+            return jsonify({"error": "No SQL query generated"}), 500
+        
+        sql = content.strip()
         # Clean markdown blocks
         sql = sql.replace('```sql', '').replace('```', '').strip()
         # Fix table placeholder

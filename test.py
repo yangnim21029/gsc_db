@@ -109,7 +109,11 @@ def test_api():
     try:
         import requests
         import json
+    except ImportError:
+        print("! 需要安裝 requests 套件: pip install requests")
+        return
 
+    try:
         # 測試 track_pages endpoint
         response = requests.post(
             "http://localhost:5000/track_pages",

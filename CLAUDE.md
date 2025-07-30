@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a minimalist Google Search Console (GSC) data management system using Parquet files and DuckDB for storage and analytics. The design philosophy is "極簡設計，先跑起來再說" (minimalist design, get it running first).
 
-**Requirements**: Python 3.9 or higher
+**Requirements**: Python 3.10 or higher (specified in pyproject.toml)
 
 ## Key Commands
 
@@ -19,6 +19,10 @@ poetry shell
 
 # Or using pip
 pip install -r requirements.txt
+
+# Set OpenAI API key for natural language queries
+export OPENAI_API_KEY=your_api_key_here
+# Or add to .env file
 
 # First time setup - requires client_secret.json from Google Console
 # The system will open a browser for OAuth authentication
@@ -33,16 +37,22 @@ python sync.py sc-domain:example.com
 
 # Or with Poetry
 poetry run gsc-sync https://example.com
+
+# List accessible GSC sites
+python list_sites.py
 ```
 
 ### API Server
 
 ```bash
-# Start Flask API server
+# Start Flask API server (includes web UI)
 python app.py 5000
 
 # Or with Poetry
 poetry run gsc-api 5000
+
+# Access web UI at http://localhost:5000
+# Natural language query interface at http://localhost:5000/query
 
 # Start MCP service for Claude
 python gsc_mcp.py
@@ -54,14 +64,10 @@ poetry run gsc-mcp
 ### Testing
 
 ```bash
-# Run tests
+# Run tests (single test file, no formal test suite)
 python test.py
 
-# Run with pytest (if tests are migrated)
-pytest tests/
-
-# Run with coverage
-pytest --cov
+# No pytest setup currently exists
 ```
 
 ### Development Tools
@@ -79,6 +85,7 @@ ruff format .
 - **Parquet files** organized by site and month: `data/{site_folder}/{YYYY-MM}/{YYYY-MM-DD}.parquet`
 - Site URLs are sanitized for folder names: `:` and `/` replaced with `_`
 - Each day's data is stored in a separate Parquet file
+- Multiple sites already have synced data in the data/ directory
 
 ### Core Components
 
@@ -86,27 +93,31 @@ ruff format .
 
    - OAuth 2.0 authentication flow with browser-based initial setup
    - Syncs up to 480 days (16 months) of historical data - GSC's retention limit
-   - Handles GSC API's 25,000 row limit with automatic pagination and batch processing
+   - Simple batch processing: queries all 4 dimensions (query, page, device, country)
+   - Handles GSC API's 25,000 row limit with automatic pagination
+   - Shows progress when multiple batches are needed (e.g., "批次 2: +25000 筆，總計 50000 筆")
    - Sequential processing (GSC API doesn't support concurrent requests)
    - Rate limiting: 10-second pause every 10 requests
    - Quota error handling: 15-minute retry on rate limit errors
    - Automatically skips dates where Parquet files already exist
    - Processes data chronologically from oldest to newest
 
-2. **project_query.py** - Shared query functions
+2. **app.py** - Flask API server with web UI
 
-   - All SQL queries use `escape_sql_string()` for injection protection
-   - Common pattern: site URL → folder name → parquet path
-   - Key functions: `track_pages_query()`, `compare_periods()`, `query_intent_analysis()`
+   - **API Endpoints:**
+     - `/track_pages` - Track specific pages and keywords
+     - `/compare_periods` - Compare time periods (week/month)
+     - `/pages_queries` - Get actual ranking keywords for specific pages
+     - `/intent_analysis_data` - Analyze search intent, returns CSV
+     - `/query` - Natural language SQL interface using OpenAI
+   - **Web UI:**
+     - Main dashboard at `/` (templates/index.html)
+     - Natural language query interface at `/query` (templates/query.html)
+     - Static assets in static/css/ and static/js/
+   - CORS enabled for cross-origin requests
 
-3. **app.py** - Flask API endpoints
+3. **gsc_mcp.py** - MCP tools for Claude
 
-   - `/track_pages` - Track specific pages and keywords
-   - `/compare_periods` - Compare time periods (week/month)
-   - `/pages_queries` - Get actual ranking keywords for specific pages
-   - `/intent_analysis_data` - Analyze search intent, returns CSV
-
-4. **gsc_mcp.py** - MCP tools for Claude
    - `query` - Execute arbitrary SQL queries
    - `show_page_queries` - View search terms for a page
    - `show_keyword_pages` - View pages ranking for keywords
@@ -116,6 +127,8 @@ ruff format .
    - `pages_queries` - Query actual ranking keywords for pages
    - `compare_periods` - Compare performance across time periods
    - Returns data as dictionaries for AI consumption
+
+4. **list_sites.py** - Utility to list all accessible GSC sites
 
 ### Query Pattern
 
@@ -131,6 +144,14 @@ conn = duckdb.connect()
 df = conn.execute(f"SELECT * FROM '{parquet_path}' WHERE ...").fetchdf()
 ```
 
+### Natural Language Query Feature
+
+The web UI includes a natural language SQL interface powered by OpenAI:
+
+- Converts natural language to DuckDB SQL queries
+- Accessible at http://localhost:5000/query
+- Requires OPENAI_API_KEY environment variable
+
 ### Authentication
 
 - Uses OAuth 2.0 with token persistence (`token.pickle`)
@@ -143,13 +164,23 @@ df = conn.execute(f"SELECT * FROM '{parquet_path}' WHERE ...").fetchdf()
 2. **Parquet + DuckDB**: Chosen for simplicity and performance - no database server needed
 3. **SQL Injection Protection**: All user inputs must go through `escape_sql_string()`
 4. **Minimalist Approach**: Add features only when needed, not preemptively
+5. **Natural Language Interface**: OpenAI integration for user-friendly queries
 
 關於你說的都很有道理，但是，卻沒有很有用，我們應該做的事情應該是少到可能需要額外增加 10%~20% 才能補齊，而不是做那種包含 80% 未來不需要再優化的事情。
 
 ## Known Technical Limitations
 
-- pyarrow 是跟 numpy 有版本相容性問題
+- pyarrow 是跟 numpy 有版本相容性問題 (numpy <2 constraint)
 
 ## Database Handling Notes
 
-- The message you need is DuckDB query returns NaN for divisions by zero, Backend should converts NaN to None/null
+- DuckDB query returns NaN for divisions by zero, Backend converts NaN to None/null
+- Parquet files support columnar storage for efficient analytical queries
+
+## Available Example Data
+
+The data/ directory contains synced data for multiple sites including:
+
+- holidaysmart.io
+- mamidaily.com
+- presslogic.com

@@ -2,6 +2,7 @@
 """
 最簡單的 GSC 資料同步到 Parquet
 """
+
 import os
 import pandas as pd
 import time
@@ -81,6 +82,7 @@ def sync_site(site_url):
             # 分批抓取資料（每批最多 25000 筆）
             all_rows = []
             start_row = 0
+            batch_num = 0
 
             while True:
                 response = (
@@ -100,11 +102,18 @@ def sync_site(site_url):
 
                 rows = response.get("rows", [])
                 if not rows:
-                    print(f"沒有更多資料，停止抓取 {date_str}")
                     break
 
                 all_rows.extend(rows)
                 start_row += len(rows)
+                batch_num += 1
+
+                # 顯示每批次的進度
+                if batch_num > 1:
+                    print(f"  批次 {batch_num}: +{len(rows)} 筆，總計 {len(all_rows)} 筆")
+
+                if len(rows) < 25000:
+                    break
 
             if not all_rows:
                 print(f"○ {date_str} 沒有資料")

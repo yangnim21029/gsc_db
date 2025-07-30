@@ -51,7 +51,7 @@ def query(site: str, sql: str):
     """
     conn = duckdb.connect()
     parquet_path = get_parquet_path(site)
-    sql = sql.replace("{site}", parquet_path)
+    sql = sql.replace("{site}", f"'{parquet_path}'")
     return conn.execute(sql).fetchdf().to_dict("records")
 
 

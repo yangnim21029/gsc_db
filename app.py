@@ -2,11 +2,118 @@
 """
 Flask API for GSC Data
 """
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, render_template
+from flask_cors import CORS
 import io
-from gsc_mcp import track_pages as track_pages_func, compare_periods as compare_periods_func, pages_queries as pages_queries_func
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+import openai
+from urllib.parse import unquote
+from gsc_mcp import track_pages as track_pages_func, compare_periods as compare_periods_func, pages_queries as pages_queries_func, query as query_func
+
+load_dotenv()
 
 app = Flask(__name__)
+CORS(app)
+
+@app.route("/")
+def index():
+    """Serve the main web UI"""
+    return render_template("query.html")
+
+@app.route("/api/sites", methods=["GET"])
+def get_sites():
+    """Get list of available sites from data directory"""
+    try:
+        data_dir = Path("data")
+        if not data_dir.exists():
+            return jsonify({"sites": []})
+        
+        sites = []
+        for site_folder in data_dir.iterdir():
+            if site_folder.is_dir():
+                # Convert folder name back to site URL
+                site_url = site_folder.name
+                if site_url.startswith('sc-domain_'):
+                    site_url = site_url.replace('sc-domain_', 'sc-domain:', 1)
+                site_url = site_url.replace('_', '/')
+                # Decode URL encoding
+                site_url = unquote(site_url)
+                sites.append(site_url)
+        
+        return jsonify({"sites": sorted(sites)})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/query", methods=["POST"])
+def api_query():
+    """Execute SQL query on GSC data"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        # Required parameters
+        if not data.get("site") or not data.get("sql"):
+            return jsonify({"error": "Missing required parameters: site and sql"}), 400
+        
+        # Execute query using the MCP function
+        results = query_func(
+            site=data["site"],
+            sql=data["sql"]
+        )
+        
+        # Handle NaN values in results
+        import math
+        for row in results:
+            for key, value in row.items():
+                if isinstance(value, float) and math.isnan(value):
+                    row[key] = None
+        
+        return jsonify({"results": results})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/nl2sql", methods=["POST"])
+def nl2sql():
+    """Convert natural language to SQL"""
+    try:
+        data = request.get_json()
+        if not data or not data.get("text"):
+            return jsonify({"error": "No text provided"}), 400
+        
+        client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        prompt = f"""Convert this to SQL for table {{site}} with columns:
+date (YYYY-MM-DD stored as VARCHAR), query, page, clicks, impressions, ctr, position
+
+IMPORTANT: 
+1. Always use {{site}} as the table name, never just 'site'.
+2. The date column is stored as VARCHAR, so cast it with date::DATE when using date functions.
+3. Use date::DATE instead of just date when extracting year/month.
+
+User question: {data["text"]}
+
+Return only the SQL query, nothing else."""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+        
+        sql = response.choices[0].message.content.strip()
+        # Clean markdown blocks
+        sql = sql.replace('```sql', '').replace('```', '').strip()
+        # Fix table placeholder
+        sql = sql.replace(' site ', ' {site} ').replace('FROM site', 'FROM {site}')
+        return jsonify({"sql": sql})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/track_pages", methods=["POST"])
 def track_pages():
@@ -78,6 +185,26 @@ def api_compare_periods():
         )
         
         return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/intent_analysis_data", methods=["POST"])
+def intent_analysis_data():
+    """分析搜索意圖並返回CSV"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        # 必要參數檢查
+        if not data.get("site"):
+            return jsonify({"error": "Missing required parameter: site"}), 400
+        
+        # TODO: Implement intent analysis query
+        # For now, return a placeholder response
+        return jsonify({"message": "Intent analysis endpoint - implementation pending"})
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500

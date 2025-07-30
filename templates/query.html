@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GSC Query</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/query.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>GSC SQL Query</h1>
+        
+        <div class="controls">
+            <select id="site-select">
+                <option value="">Loading sites...</option>
+            </select>
+            
+            <input type="text" id="nl-input" placeholder="e.g. top 10 pages by clicks">
+            
+            <textarea id="sql-query" rows="10" placeholder="SELECT * FROM {site} WHERE clicks > 100 ORDER BY date DESC LIMIT 10&#10;-- Note: CTR is decimal (0.05 = 5%)"></textarea>
+            
+            <button id="execute-btn">Execute Query</button>
+        </div>
+        
+        <div id="results"></div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/query.js') }}"></script>
+</body>
+</html>

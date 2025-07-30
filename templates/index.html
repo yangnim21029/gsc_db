@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GSC Data Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Google Search Console Data Manager</h1>
+            <p class="subtitle">Interactive Analytics Dashboard</p>
+        </header>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="site-select">Select Site:</label>
+                <select id="site-select">
+                    <option value="">Loading sites...</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="date-range">Date Range:</label>
+                <select id="date-range">
+                    <option value="7">Last 7 days</option>
+                    <option value="30" selected>Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                    <option value="180">Last 180 days</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="page-filter">Page Filter (optional):</label>
+                <input type="text" id="page-filter" placeholder="e.g., /blog/">
+            </div>
+
+            <div class="control-group">
+                <button id="refresh-btn" class="btn btn-primary">Refresh Data</button>
+                <button id="export-btn" class="btn btn-secondary">Export CSV</button>
+            </div>
+        </div>
+
+        <div class="dashboard">
+            <div class="metric-cards">
+                <div class="metric-card">
+                    <h3>Total Clicks</h3>
+                    <div class="metric-value" id="total-clicks">-</div>
+                    <div class="metric-change" id="clicks-change"></div>
+                </div>
+                <div class="metric-card">
+                    <h3>Total Impressions</h3>
+                    <div class="metric-value" id="total-impressions">-</div>
+                    <div class="metric-change" id="impressions-change"></div>
+                </div>
+                <div class="metric-card">
+                    <h3>Average CTR</h3>
+                    <div class="metric-value" id="avg-ctr">-</div>
+                    <div class="metric-change" id="ctr-change"></div>
+                </div>
+                <div class="metric-card">
+                    <h3>Average Position</h3>
+                    <div class="metric-value" id="avg-position">-</div>
+                    <div class="metric-change" id="position-change"></div>
+                </div>
+            </div>
+
+            <div class="charts">
+                <div class="chart-container">
+                    <h2>Performance Over Time</h2>
+                    <canvas id="performance-chart"></canvas>
+                </div>
+
+                <div class="chart-container">
+                    <h2>Top Pages by Clicks</h2>
+                    <canvas id="pages-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="tables">
+                <div class="table-container">
+                    <h2>Top Search Queries</h2>
+                    <div class="table-controls">
+                        <input type="text" id="query-search" placeholder="Search queries...">
+                        <select id="query-sort">
+                            <option value="clicks">Sort by Clicks</option>
+                            <option value="impressions">Sort by Impressions</option>
+                            <option value="ctr">Sort by CTR</option>
+                            <option value="position">Sort by Position</option>
+                        </select>
+                    </div>
+                    <div id="queries-table" class="data-table"></div>
+                </div>
+
+                <div class="table-container">
+                    <h2>Period Comparison</h2>
+                    <div class="table-controls">
+                        <select id="compare-period">
+                            <option value="week">Week over Week</option>
+                            <option value="month">Month over Month</option>
+                        </select>
+                        <button id="compare-btn" class="btn btn-small">Compare</button>
+                    </div>
+                    <div id="comparison-table" class="data-table"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Loading data...</p>
+        </div>
+
+        <div id="error" class="error hidden">
+            <p id="error-message"></p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

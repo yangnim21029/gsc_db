@@ -104,7 +104,8 @@ IMPORTANT:
 1. Always use {{site}} as the table name, never just 'site'.
 2. The date column is stored as VARCHAR, so cast it with date::DATE when using date functions.
 3. Use date::DATE instead of just date when extracting year/month.
-{4 if is_hourly else ''}{'. For hourly data, hour column is 0-23 where 0=midnight, 9=9am, 13=1pm, etc.' if is_hourly else ''}
+4. If no LIMIT is specified and the query selects multiple rows, add LIMIT 100.
+{5 if is_hourly else ''}{'. For hourly data, hour column is 0-23 where 0=midnight, 9=9am, 13=1pm, etc.' if is_hourly else ''}
 
 User question: {data["text"]}
 

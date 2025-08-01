@@ -63,7 +63,8 @@ def api_query():
         # Execute query using the MCP function
         results = query_func(
             site=data["site"],
-            sql=data["sql"]
+            sql=data["sql"],
+            data_type=data.get("data_type", "daily")
         )
         
         # Handle NaN values in results
@@ -87,13 +88,23 @@ def nl2sql():
         
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
+        # Determine if user is asking about hourly data
+        text_lower = data["text"].lower()
+        is_hourly = any(word in text_lower for word in ["hour", "hourly", "小時", "早上", "下午", "晚上", "morning", "afternoon", "evening", "peak"])
+        
+        if is_hourly:
+            columns_desc = "date (YYYY-MM-DD stored as VARCHAR), hour (0-23), query, page, clicks, impressions, ctr, position"
+        else:
+            columns_desc = "date (YYYY-MM-DD stored as VARCHAR), query, page, clicks, impressions, ctr, position"
+        
         prompt = f"""Convert this to SQL for table {{site}} with columns:
-date (YYYY-MM-DD stored as VARCHAR), query, page, clicks, impressions, ctr, position
+{columns_desc}
 
 IMPORTANT: 
 1. Always use {{site}} as the table name, never just 'site'.
 2. The date column is stored as VARCHAR, so cast it with date::DATE when using date functions.
 3. Use date::DATE instead of just date when extracting year/month.
+{4 if is_hourly else ''}{'. For hourly data, hour column is 0-23 where 0=midnight, 9=9am, 13=1pm, etc.' if is_hourly else ''}
 
 User question: {data["text"]}
 
@@ -114,7 +125,7 @@ Return only the SQL query, nothing else."""
         sql = sql.replace('```sql', '').replace('```', '').strip()
         # Fix table placeholder
         sql = sql.replace(' site ', ' {site} ').replace('FROM site', 'FROM {site}')
-        return jsonify({"sql": sql})
+        return jsonify({"sql": sql, "data_type": "hourly" if is_hourly else "daily"})
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500

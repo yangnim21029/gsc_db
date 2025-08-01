@@ -29,31 +29,46 @@ def escape_sql_string(value):
     return str(value).replace("'", "''")
 
 
-def get_parquet_path(site_url=None):
-    """取得 parquet 檔案路徑"""
+def get_parquet_path(site_url=None, data_type="daily"):
+    """取得 parquet 檔案路徑
+    
+    Args:
+        site_url: 網站 URL
+        data_type: 資料類型 ("daily" 或 "hourly")
+    """
     if site_url:
         folder_name = site_url.replace(":", "_").replace("/", "_")
-        return f"data/{folder_name}/*/*.parquet"
+        if data_type == "hourly":
+            return f"data/{folder_name}/hourly/*.parquet"
+        else:
+            return f"data/{folder_name}/*/*.parquet"
     else:
-        return "data/*/*/*.parquet"
+        if data_type == "hourly":
+            return "data/*/hourly/*.parquet"
+        else:
+            return "data/*/*/*.parquet"
 
 
 @mcp.tool()
-def query(site: str, sql: str):
+def query(site: str, sql: str, data_type: str = "daily"):
     """執行 SQL 查詢 GSC 數據
 
     Args:
         site: 網站名稱（會轉換成資料夾名稱）
         sql: SQL 查詢，使用 {site} 作為資料表佔位符
+        data_type: 資料類型 ("daily" 或 "hourly"，預設 "daily")
 
     Returns:
         查詢結果的字典列表
 
     Example:
         sql = "SELECT * FROM {site} WHERE clicks > 100 ORDER BY date DESC LIMIT 10"
+        
+    Note:
+        Hourly data 包含額外的 hour 欄位 (0-23)
     """
     conn = duckdb.connect()
-    parquet_path = get_parquet_path(site)
+    parquet_path = get_parquet_path(site, data_type)
     sql = sql.replace("{site}", f"'{parquet_path}'")
     return conn.execute(sql).fetchdf().to_dict("records")
 

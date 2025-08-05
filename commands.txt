@@ -38,3 +38,46 @@ FROM (
 ) AS q(query)
 LEFT JOIN {site} s ON q.query = s.query
 WHERE s.query IS NULL;
+
+
+
+
+// 我想找到有排名 愉景灣 的頁面，或是page包含愉景灣，裡面表現最好的，頁面要加總去重複
+SELECT page, 
+       SUM(clicks) AS total_clicks, 
+       SUM(impressions) AS total_impressions, 
+       AVG(ctr) AS average_ctr, 
+       AVG(position) AS average_position
+FROM {site}
+WHERE (query LIKE '%愉景灣%' OR page LIKE '%愉景灣%')
+GROUP BY page
+ORDER BY total_clicks DESC
+LIMIT 100;
+
+
+// 找出頁面 lost 最多 traffic 在 2025 3 月 vs 2025 7 月, 列出該頁面最大的 query
+WITH traffic_march AS (
+    SELECT page, query, SUM(clicks) AS total_clicks_march
+    FROM {site}
+    WHERE date::DATE >= '2025-03-01' AND date::DATE < '2025-04-01'
+    GROUP BY page, query
+),
+traffic_july AS (
+    SELECT page, query, SUM(clicks) AS total_clicks_july
+    FROM {site}
+    WHERE date::DATE >= '2025-07-01' AND date::DATE < '2025-08-01'
+    GROUP BY page, query
+),
+traffic_difference AS (
+    SELECT 
+        tm.page, 
+        tm.query, 
+        COALESCE(tm.total_clicks_march, 0) - COALESCE(tj.total_clicks_july, 0) AS traffic_loss
+    FROM traffic_march tm
+    LEFT JOIN traffic_july tj ON tm.page = tj.page AND tm.query = tj.query
+)
+SELECT page, query, traffic_loss
+FROM traffic_difference
+WHERE traffic_loss > 0
+ORDER BY traffic_loss DESC
+LIMIT 100;

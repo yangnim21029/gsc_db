@@ -68,8 +68,14 @@ def query(site: str, sql: str, data_type: str = "daily"):
         Hourly data 包含額外的 hour 欄位 (0-23)
     """
     conn = duckdb.connect()
-    parquet_path = get_parquet_path(site, data_type)
-    sql = sql.replace("{site}", f"'{parquet_path}'")
+    
+    # Handle both {site} and {site_hourly} placeholders
+    if "{site_hourly}" in sql:
+        parquet_path = get_parquet_path(site, "hourly")
+        sql = sql.replace("{site_hourly}", f"'{parquet_path}'")
+    else:
+        parquet_path = get_parquet_path(site, data_type)
+        sql = sql.replace("{site}", f"'{parquet_path}'")
     return conn.execute(sql).fetchdf().to_dict("records")
 
 

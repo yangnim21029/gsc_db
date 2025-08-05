@@ -97,11 +97,11 @@ def nl2sql():
         else:
             columns_desc = "date (YYYY-MM-DD stored as VARCHAR), query, page, clicks, impressions, ctr, position"
         
-        prompt = f"""Convert this to SQL for table {{site}} with columns:
+        prompt = f"""Convert this to SQL for table {'{site_hourly}' if is_hourly else '{site}'} with columns:
 {columns_desc}
 
 IMPORTANT: 
-1. Always use {{site}} as the table name, never just 'site'.
+1. Always use {'{site_hourly}' if is_hourly else '{site}'} as the table name, never just 'site'.
 2. The date column is stored as VARCHAR, so cast it with date::DATE when using date functions.
 3. Use date::DATE instead of just date when extracting year/month.
 4. If no LIMIT is specified and the query selects multiple rows, add LIMIT 100.

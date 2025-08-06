@@ -4,6 +4,7 @@ Flask API for GSC Data
 """
 from flask import Flask, request, jsonify, make_response, render_template
 from flask_cors import CORS
+from flasgger import Swagger
 import io
 import os
 import math
@@ -22,6 +23,13 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+# 極簡 Swagger 配置
+app.config['SWAGGER'] = {
+    'title': 'GSC API',
+    'uiversion': 3
+}
+swagger = Swagger(app)
 
 
 @app.route("/")
@@ -58,7 +66,46 @@ def get_sites():
 
 @app.route("/api/query", methods=["POST"])
 def api_query():
-    """Execute SQL query on GSC data"""
+    """執行 SQL 查詢
+    ---
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - site
+            - sql
+          properties:
+            site:
+              type: string
+              description: 網站 URL (例如 https://example.com 或 sc-domain:example.com)
+              example: https://presslogic.com
+            sql:
+              type: string
+              description: DuckDB SQL 查詢，使用 {site} 或 {site_hourly} 作為表名
+              example: SELECT * FROM {site} WHERE clicks > 100 ORDER BY date DESC LIMIT 10
+            data_type:
+              type: string
+              enum: [daily, hourly]
+              default: daily
+              description: 資料類型 (daily 或 hourly)
+    responses:
+      200:
+        description: 查詢結果
+        schema:
+          type: object
+          properties:
+            results:
+              type: array
+              items:
+                type: object
+      400:
+        description: 缺少必要參數
+      500:
+        description: 查詢錯誤
+    """
     try:
         data = request.get_json()
         if not data:
@@ -87,7 +134,39 @@ def api_query():
 
 @app.route("/api/nl2sql", methods=["POST"])
 def nl2sql():
-    """Convert natural language to SQL"""
+    """自然語言轉換成 SQL
+    ---
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - text
+          properties:
+            text:
+              type: string
+              description: 自然語言查詢
+              example: 顯示過去7天點擊數最多的10個頁面
+    responses:
+      200:
+        description: 轉換成功
+        schema:
+          type: object
+          properties:
+            sql:
+              type: string
+              description: 生成的 SQL 查詢
+            data_type:
+              type: string
+              enum: [daily, hourly]
+              description: 自動判斷的資料類型
+      400:
+        description: 缺少文字參數
+      500:
+        description: 轉換錯誤
+    """
     try:
         data = request.get_json()
         if not data or not data.get("text"):

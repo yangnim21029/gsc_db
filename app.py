@@ -92,20 +92,17 @@ def nl2sql():
         text_lower = data["text"].lower()
         is_hourly = any(word in text_lower for word in ["hour", "hourly", "小時", "早上", "下午", "晚上", "morning", "afternoon", "evening", "peak"])
         
-        if is_hourly:
-            columns_desc = "date (YYYY-MM-DD stored as VARCHAR), hour (0-23), query, page, clicks, impressions, ctr, position"
-        else:
-            columns_desc = "date (YYYY-MM-DD stored as VARCHAR), query, page, clicks, impressions, ctr, position"
-        
-        prompt = f"""Convert this to SQL for table {'{site_hourly}' if is_hourly else '{site}'} with columns:
-{columns_desc}
+        prompt = f"""Convert this to SQL. Available tables:
+- {'{site}'}: columns are date (YYYY-MM-DD stored as VARCHAR), query, page, clicks, impressions, ctr, position
+- {'{site_hourly}'}: columns are date (YYYY-MM-DD stored as VARCHAR), hour (0-23), query, page, clicks, impressions, ctr, position
 
 IMPORTANT: 
-1. Always use {'{site_hourly}' if is_hourly else '{site}'} as the table name, never just 'site'.
-2. The date column is stored as VARCHAR, so cast it with date::DATE when using date functions.
-3. Use date::DATE instead of just date when extracting year/month.
-4. If no LIMIT is specified and the query selects multiple rows, add LIMIT 100.
-{5 if is_hourly else ''}{'. For hourly data, hour column is 0-23 where 0=midnight, 9=9am, 13=1pm, etc.' if is_hourly else ''}
+1. The date column is stored as VARCHAR, so cast it with date::DATE when using date functions.
+2. Use date::DATE instead of just date when extracting year/month.
+3. If no LIMIT is specified and the query selects multiple rows, add LIMIT 100.
+4. For hourly data, hour column is 0-23 where 0=midnight, 9=9am, 13=1pm, etc.
+5. For queries with date filters, if the date is within the last 30 days from today, prefer using {site_hourly} table with GROUP BY date for daily aggregations, as hourly data is more complete for recent dates.
+6. If user mentions hourly/hour/time-of-day keywords, use {site_hourly} table.
 
 User question: {data["text"]}
 
